@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';   // ← Добавили импорт
+import 'package:fluttertoast/fluttertoast.dart';
 
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
@@ -78,10 +78,13 @@ class AuthWrapper extends StatelessWidget {
                       ElevatedButton(
                         onPressed: () async {
                           await user.sendEmailVerification();
-                          Fluttertoast.showToast(
-                            msg: "Письмо отправлено повторно",
-                            backgroundColor: Colors.green,
-                          );
+                          if (context.mounted) {
+                            Fluttertoast.showToast(
+                              msg: "Письмо отправлено повторно",
+                              backgroundColor: Colors.green,
+                              gravity: ToastGravity.BOTTOM,
+                            );
+                          }
                         },
                         child: const Text('Отправить письмо ещё раз'),
                       ),
