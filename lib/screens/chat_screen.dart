@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -19,10 +20,11 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Чат с ${widget.otherUserId}')),
+      appBar: AppBar(
+        title: Text(widget.otherUserId == currentUser.uid ? 'Заметки' : widget.otherUserId),
+      ),
       body: Column(
         children: [
-          // Список сообщений
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -44,19 +46,37 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemBuilder: (context, index) {
                     final msg = messages[index].data() as Map<String, dynamic>;
                     final isMe = msg['senderId'] == currentUser.uid;
+                    final timestamp = msg['timestamp'] as Timestamp?;
+
+                    String time = timestamp != null
+                        ? DateFormat('HH:mm').format(timestamp.toDate())
+                        : '';
 
                     return Align(
                       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
                         decoration: BoxDecoration(
                           color: isMe ? Colors.blue : Colors.grey[800],
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                        child: Text(
-                          msg['text'],
-                          style: const TextStyle(color: Colors.white),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              msg['text'],
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              time,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -66,7 +86,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
 
-          // Поле ввода
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -75,7 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: TextField(
                     controller: _messageController,
                     decoration: const InputDecoration(
-                      hintText: 'Напишите сообщение...',
+                      hintText: 'Сообщение...',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -96,20 +115,17 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
-    final messageRef = FirebaseFirestore.instance
+    await FirebaseFirestore.instance
         .collection('chats')
         .doc(widget.chatId)
         .collection('messages')
-        .doc();
-
-    await messageRef.set({
+        .add({
       'senderId': currentUser.uid,
       'text': text,
       'timestamp': FieldValue.serverTimestamp(),
-      'isRead': false,
     });
 
-    // Обновляем последнее сообщение в чате
+    // Обновляем последнее сообщение
     await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
       'lastMessage': text,
       'lastMessageTime': FieldValue.serverTimestamp(),

@@ -28,7 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfile() async {
     final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-    if (doc.exists) {
+    if (doc.exists && mounted) {
       setState(() {
         _nicknameController.text = doc['nickname'] ?? '';
         _photoUrl = doc['photoUrl'];
@@ -36,78 +36,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _saveProfile() async {
+  Future<void> _saveNickname() async {
     final nickname = _nicknameController.text.trim().toLowerCase();
     if (nickname.isEmpty) return;
 
     setState(() => _saving = true);
 
     try {
-      // Проверка уникальности никнейма
-      final existing = await FirebaseFirestore.instance
-          .collection('users')
-          .where('nickname', isEqualTo: nickname)
-          .get();
-
-      if (existing.docs.isNotEmpty && existing.docs.first.id != user.uid) {
-        Fluttertoast.showToast(msg: "Никнейм уже занят");
-        return;
-      }
-
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'nickname': nickname,
       });
-
       Fluttertoast.showToast(msg: "Никнейм сохранён");
     } catch (e) {
-      Fluttertoast.showToast(msg: "Ошибка сохранения");
+      Fluttertoast.showToast(msg: "Ошибка сохранения никнейма");
     } finally {
-      setState(() => _saving = false);
+      if (mounted) setState(() => _saving = false);
     }
   }
 
-  Future<void> _pickAvatar() async {
+  Future<void> _pickAndUploadAvatar() async {
     final picker = ImagePicker();
-    final file = await picker.pickImage(source: ImageSource.gallery);
-    if (file == null) return;
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800);
+
+    if (pickedFile == null) return;
 
     setState(() => _saving = true);
 
     try {
       final ref = FirebaseStorage.instance.ref().child('avatars/${user.uid}.jpg');
-      await ref.putFile(File(file.path));
+      await ref.putFile(File(pickedFile.path));
       final url = await ref.getDownloadURL();
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
         'photoUrl': url,
       });
 
-      setState(() => _photoUrl = url);
+      if (mounted) setState(() => _photoUrl = url);
       Fluttertoast.showToast(msg: "Аватарка обновлена");
     } catch (e) {
       Fluttertoast.showToast(msg: "Ошибка загрузки аватарки");
     } finally {
-      setState(() => _saving = false);
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Профиль')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
+      appBar: AppBar(title: const Text('Мой профиль')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
             GestureDetector(
-              onTap: _pickAvatar,
+              onTap: _pickAndUploadAvatar,
               child: CircleAvatar(
-                radius: 60,
+                radius: 70,
                 backgroundImage: _photoUrl != null ? NetworkImage(_photoUrl!) : null,
                 child: _photoUrl == null ? const Icon(Icons.camera_alt, size: 50) : null,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            const Text("Нажмите на аватарку для смены", style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 40),
+
             TextField(
               controller: _nicknameController,
               decoration: const InputDecoration(
@@ -115,14 +107,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 40),
+
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _saving ? null : _saveProfile,
+                onPressed: _saving ? null : _saveNickname,
                 child: _saving
                     ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Сохранить'),
+                    : const Text('Сохранить никнейм'),
               ),
             ),
           ],

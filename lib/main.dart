@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';   // ← Добавили импорт
 
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
@@ -47,10 +48,57 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        if (snapshot.hasData && snapshot.data!.emailVerified) {
-          return const HomeScreen();
+        if (snapshot.hasData) {
+          final user = snapshot.data!;
+
+          if (user.emailVerified) {
+            return const HomeScreen();
+          } else {
+            // Почта не подтверждена
+            return Scaffold(
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.email_outlined, size: 80, color: Colors.orange),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Подтвердите ваш email',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Письмо отправлено на\n${user.email}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                      const SizedBox(height: 40),
+                      ElevatedButton(
+                        onPressed: () async {
+                          await user.sendEmailVerification();
+                          Fluttertoast.showToast(
+                            msg: "Письмо отправлено повторно",
+                            backgroundColor: Colors.green,
+                          );
+                        },
+                        child: const Text('Отправить письмо ещё раз'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () => FirebaseAuth.instance.signOut(),
+                        child: const Text('Выйти из аккаунта'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
         }
 
+        // Не авторизован
         return const AuthScreen();
       },
     );

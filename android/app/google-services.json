@@ -12,7 +12,12 @@
           "package_name": "com.example.chatix"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA3J371D1d7Pufm25nQYpjsGyArvk_pmiI"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

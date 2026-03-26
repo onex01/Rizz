@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'chat_screen.dart';
-import 'profile_screen.dart';   // ← добавим дальше
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,31 +10,24 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with AutomaticKeepAliveClientMixin {
   final currentUser = FirebaseAuth.instance.currentUser!;
 
   @override
+  bool get wantKeepAlive => true; // сохраняет состояние при переключении
+
+  @override
   Widget build(BuildContext context) {
+    super.build(context); // важно для AutomaticKeepAliveClientMixin
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('ChatiX'),
         actions: [
-          // Поиск
           IconButton(
             icon: const Icon(Icons.search),
             onPressed: () => _showSearchDialog(context),
           ),
-          // Профиль
-          IconButton(
-            icon: const Icon(Icons.person),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
-            },
-          ),
-          // Выход
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => FirebaseAuth.instance.signOut(),
@@ -60,11 +52,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey),
                   SizedBox(height: 20),
-                  Text(
-                    'Пока нет чатов\nНажмите на лупу или "Заметки"',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
+                  Text('Пока нет чатов\nНайдите пользователя через поиск'),
                 ],
               ),
             );
@@ -75,43 +63,104 @@ class _HomeScreenState extends State<HomeScreen> {
           return ListView.builder(
             itemCount: chats.length,
             itemBuilder: (context, index) {
-              final chatData = chats[index].data() as Map<String, dynamic>;
-              final participants = chatData['participants'] as List;
-              final otherUserId = participants.firstWhere((id) => id != currentUser.uid);
+              final data = chats[index].data() as Map<String, dynamic>;
+              final participants = data['participants'] as List<dynamic>;
+              final otherUserId = participants.firstWhere((id) => id != currentUser.uid, orElse: () => currentUser.uid);
+              final isSelfChat = data['isSelfChat'] == true;
 
               return ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.person)),
-                title: Text(otherUserId),
-                subtitle: Text(chatData['lastMessage'] ?? ''),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ChatScreen(
-                      chatId: chats[index].id,
-                      otherUserId: otherUserId,
-                    ),
-                  ),
+                leading: CircleAvatar(
+                  child: isSelfChat ? const Icon(Icons.note_alt) : const Icon(Icons.person),
                 ),
+                title: Text(isSelfChat ? 'Заметки' : otherUserId),
+                subtitle: Text(data['lastMessage'] ?? 'Нет сообщений'),
+                trailing: data['lastMessageTime'] != null
+                    ? Text(
+                        (data['lastMessageTime'] as Timestamp)
+                            .toDate()
+                            .toString()
+                            .substring(11, 16),
+                      )
+                    : null,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        chatId: chats[index].id,
+                        otherUserId: otherUserId,
+                      ),
+                    ),
+                  );
+                },
               );
             },
           );
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _createSelfChat,
+        onPressed: _createSelfNotes,
         child: const Icon(Icons.note_alt),
-        tooltip: 'Заметки (чат с собой)',
+        tooltip: 'Заметки',
       ),
     );
   }
 
-  // Создание чата с самим собой (Заметки)
-  Future<void> _createSelfChat() async {
+  void _showSearchDialog(BuildContext context) {
+    // твой текущий код поиска
+    String query = '';
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Поиск по никнейму'),
+        content: TextField(
+          autofocus: true,
+          onChanged: (value) => query = value.trim().toLowerCase(),
+          decoration: const InputDecoration(hintText: 'Введите никнейм'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              if (query.isEmpty) return;
+
+              final result = await FirebaseFirestore.instance
+                  .collection('users')
+                  .where('nickname', isEqualTo: query)
+                  .limit(1)
+                  .get();
+
+              if (result.docs.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Пользователь не найден')),
+                );
+                return;
+              }
+
+              final otherUserId = result.docs.first.id;
+              if (otherUserId == currentUser.uid) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Это вы сами')),
+                );
+                return;
+              }
+
+              _createOrOpenChat(otherUserId);
+            },
+            child: const Text('Найти'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _createSelfNotes() async {
     final chatId = '${currentUser.uid}_self';
 
     await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
       'participants': [currentUser.uid],
-      'lastMessage': 'Заметки',
+      'lastMessage': '',
       'lastMessageTime': FieldValue.serverTimestamp(),
       'isSelfChat': true,
     }, SetOptions(merge: true));
@@ -126,5 +175,25 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _showSearchDialog(BuildContext context) { /* твой предыдущий код поиска */ }
+  Future<void> _createOrOpenChat(String otherUserId) async {
+    final currentUid = currentUser.uid;
+    final chatId = currentUid.compareTo(otherUserId) < 0
+        ? '${currentUid}_$otherUserId'
+        : '${otherUserId}_$currentUid';
+
+    await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
+      'participants': [currentUid, otherUserId],
+      'lastMessage': '',
+      'lastMessageTime': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(chatId: chatId, otherUserId: otherUserId),
+        ),
+      );
+    }
+  }
 }

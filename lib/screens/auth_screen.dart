@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:email_validator/email_validator.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -20,86 +19,68 @@ class _AuthScreenState extends State<AuthScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
-    clientId: '931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com',
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    _googleSignIn.onCurrentUserChanged.listen(_handleGoogleSignIn);
-  }
-
-  Future<void> _handleGoogleSignIn(GoogleSignInAccount? account) async {
-    if (account == null) return;
-
-    setState(() => _isLoading = true);
-
+  // Автоматическое создание профиля пользователя
+  Future<void> _createUserProfile(User user) async {
     try {
-      final GoogleSignInAuthentication googleAuth = await account.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      final firebaseUser = userCredential.user!;
-
-      // Создаём профиль пользователя автоматически
-      await FirebaseFirestore.instance.collection('users').doc(firebaseUser.uid).set({
-        'uid': firebaseUser.uid,
-        'email': firebaseUser.email,
-        'nickname': firebaseUser.email!.split('@')[0].toLowerCase(), // временный ник
-        'photoUrl': firebaseUser.photoURL,
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+        'uid': user.uid,
+        'email': user.email,
+        'nickname': user.email!.split('@')[0].toLowerCase(),
+        'photoUrl': user.photoURL,
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-
-      Fluttertoast.showToast(msg: "Добро пожаловать!", backgroundColor: Colors.green);
     } catch (e) {
-      Fluttertoast.showToast(msg: "Ошибка Google: $e", backgroundColor: Colors.red);
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _signInWithGoogle() async {
-    setState(() => _isLoading = true);
-    try {
-      await _googleSignIn.signIn();
-    } catch (e) {
-      Fluttertoast.showToast(msg: "Не удалось открыть Google", backgroundColor: Colors.red);
-    } finally {
-      setState(() => _isLoading = false);
+      print("Ошибка создания профиля: $e");
     }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
 
     try {
+      UserCredential cred;
+
       if (isLogin) {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(
+        // Вход
+        cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
       } else {
-        final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        // Регистрация
+        cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
         await cred.user!.sendEmailVerification();
-        Fluttertoast.showToast(msg: "Аккаунт создан! Подтвердите email");
+        Fluttertoast.showToast(msg: "Аккаунт создан! Проверьте почту");
+      }
+
+      // Создаём профиль
+      if (cred.user != null) {
+        await _createUserProfile(cred.user!);
+        Fluttertoast.showToast(msg: isLogin ? "Вход выполнен!" : "Регистрация успешна!");
       }
     } on FirebaseAuthException catch (e) {
       String msg = "Ошибка";
       if (e.code == 'email-already-in-use') msg = "Этот email уже используется";
+      if (e.code == 'user-not-found' || e.code == 'wrong-password') msg = "Неверный email или пароль";
       if (e.code == 'weak-password') msg = "Слишком слабый пароль";
       Fluttertoast.showToast(msg: msg, backgroundColor: Colors.red);
+    } catch (e) {
+      Fluttertoast.showToast(msg: "Неизвестная ошибка", backgroundColor: Colors.red);
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -160,21 +141,6 @@ class _AuthScreenState extends State<AuthScreen> {
                   child: Text(isLogin
                       ? 'Нет аккаунта? Зарегистрироваться'
                       : 'Уже есть аккаунт? Войти'),
-                ),
-
-                const SizedBox(height: 30),
-                const Divider(),
-                const SizedBox(height: 20),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: OutlinedButton.icon(
-                    onPressed: _isLoading ? null : _signInWithGoogle,
-                    icon: const Icon(Icons.g_mobiledata, size: 28),
-                    label: const Text('Войти через Google'),
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.grey)),
-                  ),
                 ),
               ],
             ),
