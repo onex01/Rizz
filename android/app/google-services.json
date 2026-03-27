@@ -7,12 +7,49 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:931475441186:android:cbc3e1707430bbaeb3ec7b",
+        "android_client_info": {
+          "package_name": "com.duality_project.chatix"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3J371D1d7Pufm25nQYpjsGyArvk_pmiI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:931475441186:android:e178ac4ac954ef46b3ec7b",
         "android_client_info": {
           "package_name": "com.example.chatix"
         }
       },
       "oauth_client": [
+        {
+          "client_id": "931475441186-rtiu9pnt3f115lc64na8ek0o9qubr5r2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.chatix",
+            "certificate_hash": "869351bdd4cf720cdee7ce9a4dc1cdae79ac8e2c"
+          }
+        },
         {
           "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
           "client_type": 3
