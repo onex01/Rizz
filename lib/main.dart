@@ -36,7 +36,6 @@ class MyApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
         scaffoldBackgroundColor: const Color(0xFF0F0F0F),
-        useMaterial3: true,
       ),
       home: const AuthWrapper(),
     );

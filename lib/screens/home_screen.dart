@@ -132,8 +132,8 @@ class _HomeScreenState extends State<HomeScreen> {
       // Оставляем старый FAB для заметок (можно убрать, если хочешь)
       floatingActionButton: FloatingActionButton(
         onPressed: _createSelfNotes,
-        child: const Icon(Icons.note_alt),
         tooltip: 'Заметки',
+        child: const Icon(Icons.note_alt),
       ),
     );
   }

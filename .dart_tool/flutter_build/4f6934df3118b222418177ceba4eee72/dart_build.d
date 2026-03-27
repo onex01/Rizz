@@ -1,1 +1,0 @@
- C:\\Users\\User\\vscode\\ChatiX\\.dart_tool\\flutter_build\\4f6934df3118b222418177ceba4eee72\\dart_build_result.json:  C:\\Users\\User\\vscode\\ChatiX\\.dart_tool\\package_config.json C:\\Users\\User\\vscode\\ChatiX\\pubspec.yaml C:\\Users\\User\\vscode\\flutter\\bin\\cache\\dart-sdk\\version c:\\users\\user\\vscode\\chatix\\.dart_tool\\package_config.json
