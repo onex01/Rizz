@@ -1,10 +1,13 @@
+import 'package:ChatiX/services/message_service.dart';
 import 'package:ChatiX/services/notification_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../widgets/message_list.dart';
-import 'user_profile_screen.dart';          // ← Новый импорт
+import 'user_profile_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -38,7 +41,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (widget.otherUserId == currentUser.uid) {
       setState(() => otherUserNickname = 'Заметки');
       return;
-     }
+    }
     try {
       final doc = await FirebaseFirestore.instance.collection('users').doc(widget.otherUserId).get();
       if (doc.exists && mounted) {
@@ -50,75 +53,54 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       print("Ошибка загрузки профиля: $e");
     }
-    // В самом конце _loadOtherUserInfo()
-if (mounted) {
-  NotificationService.saveTokenToFirestore(currentUser.uid);
-}
-  }
+    if (mounted) {
+      NotificationService.saveTokenToFirestore(currentUser.uid);
+    }
 
-  void _showFloatingMessageMenu(BuildContext context, LongPressStartDetails details, String messageId, Map<String, dynamic> msgData) {
-    final isMe = msgData['senderId'] == currentUser.uid;
-    final text = msgData['text'] ?? '';
-
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(details.globalPosition, details.globalPosition),
-      Offset.zero & overlay.size,
-    );
-
-    showMenu<String>(
-      context: context,
-      position: position,
-      color: Colors.grey[850],
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      items: [
-        PopupMenuItem(value: 'reply', child: _menuRow(Icons.reply, 'Ответить')),
-        PopupMenuItem(value: 'copy', child: _menuRow(Icons.copy, 'Копировать')),
-        if (isMe) PopupMenuItem(value: 'edit', child: _menuRow(Icons.edit, 'Изменить')),
-        PopupMenuItem(value: 'deleteMe', child: _menuRow(Icons.delete_outline, 'Удалить у меня')),
-        if (isMe) PopupMenuItem(value: 'deleteAll', child: _menuRow(Icons.delete_forever, 'Удалить у всех', color: Colors.red)),
-        PopupMenuItem(value: 'forward', child: _menuRow(Icons.forward, 'Переслать')),
-      ],
-    ).then((value) {
-      if (value == null) return;
-      switch (value) {
-        case 'reply':
-          setState(() {
-            _replyingToId = messageId;
-            _replyingToText = text;
-          });
-          break;
-        case 'copy':
-          Clipboard.setData(ClipboardData(text: text));
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Текст скопирован')));
-          break;
-        case 'edit':
-          _editMessage(messageId, text);
-          break;
-        case 'deleteMe':
-          _deleteMessage(messageId, forEveryone: false);
-          break;
-        case 'deleteAll':
-          _deleteMessage(messageId, forEveryone: true);
-          break;
-        case 'forward':
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Переслать — в разработке')));
-          break;
-      }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markMessagesAsRead();
     });
   }
 
-  Widget _menuRow(IconData icon, String text, {Color? color}) {
-    return Row(
-      children: [
-        Icon(icon, color: color ?? Colors.white, size: 22),
-        const SizedBox(width: 16),
-        Text(text, style: TextStyle(color: color ?? Colors.white, fontSize: 16)),
-      ],
-    );
+  Future<void> _markMessagesAsRead() async {
+    if (widget.otherUserId == currentUser.uid) return;
+
+    try {
+      final messagesRef = FirebaseFirestore.instance
+          .collection('chats')
+          .doc(widget.chatId)
+          .collection('messages');
+
+      final unreadSnapshot = await messagesRef
+          .where('senderId', isNotEqualTo: currentUser.uid)
+          .where('read', isEqualTo: false)
+          .get();
+
+      if (unreadSnapshot.docs.isEmpty) return;
+
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in unreadSnapshot.docs) {
+        batch.update(doc.reference, {'read': true});
+      }
+      await batch.commit();
+    } catch (e) {
+      print("Ошибка при пометке сообщений как прочитанных: $e");
+    }
   }
 
-  Future<void> _editMessage(String messageId, String oldText) async {
+  void _handleReply(String messageId, String text) {
+    setState(() {
+      _replyingToId = messageId;
+      _replyingToText = text;
+    });
+  }
+
+  void _handleCopy(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Текст скопирован')));
+  }
+
+  Future<void> _handleEdit(String messageId, String oldText) async {
     final controller = TextEditingController(text: oldText);
     final newText = await showDialog<String>(
       context: context,
@@ -142,7 +124,7 @@ if (mounted) {
         .update({'text': newText, 'isEdited': true, 'editedAt': FieldValue.serverTimestamp()});
   }
 
-  Future<void> _deleteMessage(String messageId, {required bool forEveryone}) async {
+  Future<void> _handleDelete(String messageId, {required bool forEveryone}) async {
     if (forEveryone) {
       await FirebaseFirestore.instance
           .collection('chats')
@@ -160,44 +142,8 @@ if (mounted) {
     }
   }
 
-  Future<void> _sendMessage() async {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
-    final messageData = {
-      'senderId': currentUser.uid,
-      'text': text,
-      'timestamp': FieldValue.serverTimestamp(),
-      'replyToMessageId': _replyingToId,
-      'repliedMessageText': _replyingToText,
-    };
-
-    await FirebaseFirestore.instance
-        .collection('chats')
-        .doc(widget.chatId)
-        .collection('messages')
-        .add(messageData);
-
-    await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
-      'lastMessage': text,
-      'lastMessageTime': FieldValue.serverTimestamp(),
-    });
-
-    setState(() {
-      _replyingToId = null;
-      _replyingToText = null;
-    });
-    _messageController.clear();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
+  void _handleForward() {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Переслать — в разработке')));
   }
 
   void _cancelReply() {
@@ -214,6 +160,51 @@ if (mounted) {
     });
   }
 
+  // ==================== ОТПРАВКА ТЕКСТА ====================
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
+
+    await MessageService.sendTextMessage(
+      chatId: widget.chatId,
+      text: text,
+      replyToMessageId: _replyingToId,
+      repliedMessageText: _replyingToText,
+    );
+
+    setState(() {
+      _replyingToId = null;
+      _replyingToText = null;
+    });
+    _messageController.clear();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
+    });
+  }
+
+  // ==================== ОТПРАВКА ФОТОГРАФИИ ====================
+  Future<void> _sendImage() async {
+    await MessageService.pickAndSendImage(
+      chatId: widget.chatId,
+      replyToMessageId: _replyingToId,
+      repliedMessageText: _replyingToText,
+    );
+
+    setState(() {
+      _replyingToId = null;
+      _replyingToText = null;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      }
+    });
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -224,18 +215,18 @@ if (mounted) {
   @override
   Widget build(BuildContext context) {
     final displayName = otherUserNickname ?? widget.otherUserId;
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: isLight ? Colors.white : null,
+        foregroundColor: isLight ? Colors.black : null,
         title: GestureDetector(
-          onTap: () {
-            // Не открываем профиль для собственных заметок
+           onTap: () {
             if (widget.otherUserId != currentUser.uid) {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => UserProfileScreen(userId: widget.otherUserId),
-                ),
+                CupertinoPageRoute(builder: (context) => UserProfileScreen(userId: widget.otherUserId)),
               );
             }
           },
@@ -245,40 +236,64 @@ if (mounted) {
                 CircleAvatar(
                   radius: 18,
                   backgroundImage: otherUserPhotoUrl != null ? NetworkImage(otherUserPhotoUrl!) : null,
-                  child: otherUserPhotoUrl == null && widget.otherUserId != currentUser.uid ? const Icon(Icons.person, size: 20) : null,
+                  child: otherUserPhotoUrl == null && widget.otherUserId != currentUser.uid
+                      ? const Icon(Icons.person, size: 20)
+                      : null,
                 ),
               const SizedBox(width: 12),
-              Text(displayName),
+              Text(
+                displayName,
+                style: TextStyle(
+                  color: isLight ? Colors.black : null,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
         centerTitle: false,
       ),
       body: Column(
-         children: [
+        children: [
           Expanded(
             child: MessageList(
               chatId: widget.chatId,
               currentUserId: currentUser.uid,
-              scrollController: _scrollController,
-              onLongPress: _showFloatingMessageMenu,
+               scrollController: _scrollController,
               onReplySwipe: _handleReplySwipe,
+              onReply: _handleReply,
+              onCopy: _handleCopy,
+              onEdit: _handleEdit,
+              onDeleteMe: (id) => _handleDelete(id, forEveryone: false),
+              onDeleteAll: (id) => _handleDelete(id, forEveryone: true),
+              onForward: _handleForward,
             ),
           ),
 
+          // ==================== НОВОЕ ПОЛЕ ВВОДА В СТИЛЕ iOS (как на скриншоте) ====================
           Container(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 13),
+            padding: EdgeInsets.fromLTRB(8, 8, 8, MediaQuery.of(context).padding.bottom + 8),
             decoration: BoxDecoration(
-              color: Colors.grey[900],
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, -3))],
+              color: isLight ? CupertinoColors.systemGrey6 : Colors.grey[900],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isLight ? 0.08 : 0.15),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
             ),
             child: Column(
               children: [
+                // Ответ на сообщение
                 if (_replyingToId != null)
                   Container(
                     margin: const EdgeInsets.only(bottom: 8),
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(
+                      color: isLight ? Colors.blue.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Row(
                       children: [
                         const Icon(Icons.reply, color: Colors.blue),
@@ -288,31 +303,100 @@ if (mounted) {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text('Ответ на сообщение', style: TextStyle(color: Colors.blue, fontSize: 12)),
-                              Text(_replyingToText ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
+                              Text(
+                                _replyingToText ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: isLight ? Colors.black87 : Colors.white70),
+                              ),
                             ],
                           ),
                         ),
-                        IconButton(icon: const Icon(Icons.close, color: Colors.grey), onPressed: _cancelReply),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.grey),
+                          onPressed: _cancelReply,
+                        ),
                       ],
                     ),
                   ),
+
+                // Само поле ввода в стиле iMessage
                 Row(
                   children: [
-                    IconButton(icon: const Icon(Icons.attach_file, color: Colors.grey), onPressed: () {}),
+                    // Кнопка прикрепить
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: _sendImage,
+                      child: Icon(
+                        CupertinoIcons.paperclip,
+                        color: isLight ? CupertinoColors.systemGrey : Colors.grey,
+                        size: 28,
+                      ),
+                    ),
+
+                    const SizedBox(width: 4),
+
+                    // Поле ввода
                     Expanded(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(30)),
-                        child: TextField(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isLight ? CupertinoColors.white : Colors.grey[800],
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: isLight ? CupertinoColors.systemGrey4 : Colors.transparent,
+                            width: 1,
+                          ),
+                        ),
+                        child: CupertinoTextField(
                           controller: _messageController,
-                          textCapitalization: TextCapitalization.sentences,
-                          decoration: const InputDecoration(hintText: 'Сообщение...', border: InputBorder.none, hintStyle: TextStyle(color: Colors.grey)),
+                          placeholder: 'Сообщение...',
+                          placeholderStyle: TextStyle(
+                            color: isLight ? CupertinoColors.systemGrey : Colors.grey,
+                          ),
+                          style: TextStyle(
+                            color: isLight ? CupertinoColors.black : Colors.white,
+                            fontSize: 17,
+                          ),
+                          decoration: const BoxDecoration(),
                           maxLines: null,
+                          keyboardAppearance: isLight ? Brightness.light : Brightness.dark,
+                          textCapitalization: TextCapitalization.sentences,
                         ),
                       ),
                     ),
-                    IconButton(icon: const Icon(Icons.emoji_emotions_outlined, color: Colors.grey), onPressed: () {}),
-                    IconButton(icon: const Icon(Icons.send, color: Colors.blue), onPressed: _sendMessage),
+
+                    const SizedBox(width: 4),
+
+                    // Emoji
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () {},
+                      child: Icon(
+                        CupertinoIcons.smiley,
+                        color: isLight ? CupertinoColors.systemGrey : Colors.grey,
+                        size: 28,
+                      ),
+                    ),
+
+                    // Кнопка отправки
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _messageController,
+                      builder: (context, value, child) {
+                        final hasText = value.text.trim().isNotEmpty;
+                        return CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: hasText ? _sendMessage : null,
+                          child: Icon(
+                            CupertinoIcons.arrow_up_circle_fill,
+                            color: hasText
+                                ? CupertinoColors.activeBlue
+                                : (isLight ? CupertinoColors.systemGrey3 : Colors.grey),
+                            size: 32,
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ],

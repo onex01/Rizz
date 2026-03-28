@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
- import 'package:flutter/material.dart';
-import 'edit_profile_screen.dart';   // ← важно!
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -15,7 +17,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _nicknameController = TextEditingController();
   final _bioController = TextEditingController();
 
-   String? _photoUrl;
+  String? _photoUrl;
 
   @override
   void initState() {
@@ -32,152 +34,193 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _photoUrl = doc['photoUrl'];
       });
     }
-   }
+  }
 
-   @override
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 280,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
-                  ),
-                ),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Image.network(
-                        'https://picsum.photos/id/1015/800/600',
-                        fit: BoxFit.cover,
-                        opacity: const AlwaysStoppedAnimation(0.75),
-                      ),
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
+    return CupertinoPageScaffold(
+      backgroundColor: isLight ? CupertinoColors.systemGrey6 : const Color(0xFF1C1C1E),
+      navigationBar: CupertinoNavigationBar(
+        backgroundColor: isLight ? CupertinoColors.systemGrey6 : const Color(0xFF1C1C1E),
+        border: null,
+        leading: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: () => Navigator.pop(context),
+          child: const Icon(CupertinoIcons.chevron_back, size: 28),
+        ),
+        middle: const Text('Profile'),
+        trailing: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: () {
+            Navigator.push(
+              context,
+              CupertinoPageRoute(builder: (_) => const EditProfileScreen()),
+            );
+          },
+          child: const Text(
+            'Edit',
+            style: TextStyle(
+              color: CupertinoColors.activeBlue,
+              fontWeight: FontWeight.w600,
+              fontSize: 17,
+            ),
+          ),
+        ),
+      ),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              const SizedBox(height: 20),
+
+              // Большой аватар с кнопкой камеры
+              Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  CircleAvatar(
+                    radius: 75,
+                    backgroundColor: isLight ? CupertinoColors.systemGrey5 : CupertinoColors.systemGrey2,
+                    child: CircleAvatar(
+                      radius: 70,
+                      backgroundImage: _photoUrl != null ? NetworkImage(_photoUrl!) : null,
+                      child: _photoUrl == null
+                          ? Icon(
+                              CupertinoIcons.person_fill,
+                              size: 90,
+                              color: isLight ? CupertinoColors.systemGrey : CupertinoColors.white,
+                            )
+                          : null,
                     ),
-                    Positioned(
-                      bottom: 20,
-                      left: 20,
-                      child: CircleAvatar(
-                        radius: 60,
-                        backgroundColor: Colors.white,
-                        child: CircleAvatar(
-                          radius: 56,
-                          backgroundImage: _photoUrl != null ? NetworkImage(_photoUrl!) : null,
-                          child: _photoUrl == null
-                              ? const Icon(Icons.person, size: 60, color: Colors.grey)
-                              : null,
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Смена фото — в разработке')),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: CupertinoColors.activeBlue,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isLight ? CupertinoColors.white : const Color(0xFF1C1C1E),
+                          width: 3,
                         ),
                       ),
+                      child: const Icon(
+                        CupertinoIcons.camera_fill,
+                        color: CupertinoColors.white,
+                        size: 22,
+                      ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-                  );
-                },
-                child: const Text('Edit', style: TextStyle(color: Colors.white, fontSize: 17)),
-              ),
-            ],
-          ),
-
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _nicknameController.text.isNotEmpty ? _nicknameController.text : 'Your Name',
-                    style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text('2 subscribers', style: TextStyle(fontSize: 16, color: Colors.grey)),
-
-                  const SizedBox(height: 24),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _actionButton(Icons.live_tv, 'live stream'),
-                      _actionButton(Icons.notifications_off, 'mute'),
-                      _actionButton(Icons.search, 'search'),
-                      _actionButton(Icons.more_horiz, 'more'),
-                    ],
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[850],
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      _bioController.text.isNotEmpty ? _bioController.text : 'Valdes. Miss Valdes. It\'s Spanish, you know',
-                      style: const TextStyle(fontSize: 16, height: 1.4),
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  ListTile(
-                    leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.shield, color: Colors.white)),
-                    title: const Text('Administrators'),
-                    trailing: const Text('1', style: TextStyle(color: Colors.grey)),
-                    onTap: () {},
-                  ),
-                  ListTile(
-                    leading: const CircleAvatar(backgroundColor: Colors.blue, child: Icon(Icons.group, color: Colors.white)),
-                    title: const Text('Subscribers'),
-                    trailing: const Text('2', style: TextStyle(color: Colors.grey)),
-                    onTap: () {},
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  const Text('Media', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 12),
-                  Container(
-                    height: 120,
-                    decoration: BoxDecoration(color: Colors.grey[850], borderRadius: BorderRadius.circular(16)),
-                    child: const Center(child: Text('Media gallery will be here', style: TextStyle(color: Colors.grey))),
                   ),
                 ],
               ),
-            ),
+
+              const SizedBox(height: 16),
+
+              // Имя (без жёлтых выделений)
+              SelectionContainer.disabled(
+                child: Text(
+                  _nicknameController.text.isNotEmpty ? _nicknameController.text : 'Your Name',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: CupertinoColors.label,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 4),
+
+              // Подзаголовок
+              SelectionContainer.disabled(
+                child: Text(
+                  'last seen recently',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: isLight ? CupertinoColors.secondaryLabel : const Color(0xFF8E8E93),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              // Панель действий (Audio / Video / Message / Info)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _actionButton(CupertinoIcons.phone_fill, 'Audio'),
+                    _actionButton(CupertinoIcons.videocam_fill, 'Video'),
+                    _actionButton(CupertinoIcons.chat_bubble_fill, 'Message'),
+                    _actionButton(CupertinoIcons.info_circle_fill, 'Info'),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              // Bio
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: isLight ? CupertinoColors.systemGrey6 : CupertinoColors.systemGrey5,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: SelectionContainer.disabled(
+                    child: Text(
+                      _bioController.text.isNotEmpty ? _bioController.text : "Hi, I'm Valdes. This is my bio.",
+                      style: const TextStyle(
+                        fontSize: 16,
+                        height: 1.4,
+                        color: CupertinoColors.label,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _actionButton(IconData icon, String label) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Colors.grey[850], borderRadius: BorderRadius.circular(12)),
-          child: Icon(icon, size: 28),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isLight ? CupertinoColors.systemGrey6 : CupertinoColors.systemGrey5,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            size: 32,
+            color: CupertinoColors.activeBlue,
+          ),
         ),
-        const SizedBox(height: 6),
-        Text(label, style: const TextStyle(fontSize: 13)),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: isLight ? CupertinoColors.secondaryLabel : const Color(0xFF8E8E93),
+          ),
+        ),
       ],
     );
   }

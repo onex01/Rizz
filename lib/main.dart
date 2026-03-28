@@ -3,10 +3,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
+import 'providers/theme_provider.dart';           // ← Новый импорт
 import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'firebase_options.dart';
-import 'services/notification_service.dart';   // ← Новый импорт
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,17 +28,42 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ChatiX',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF0F0F0F),
-      ),
-      home: const AuthWrapper(),
+    return ListenableBuilder(
+      listenable: themeProvider,          // ← Реактивная перестройка при смене темы
+      builder: (context, child) {
+        return MaterialApp(
+          title: 'ChatiX',
+          debugShowCheckedModeBanner: false,
+
+          // Светлая тема
+          theme: ThemeData.light().copyWith(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.light,
+            ),
+            scaffoldBackgroundColor: Colors.white,
+            appBarTheme: const AppBarTheme(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              elevation: 0,
+            ),
+          ),
+
+          // Тёмная тема (как было у тебя раньше)
+          darkTheme: ThemeData.dark().copyWith(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.dark,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF0F0F0F),
+          ),
+
+          // Реальная тема, выбранная пользователем
+          themeMode: themeProvider.themeMode,
+
+          home: const AuthWrapper(),
+        );
+      },
     );
   }
 }

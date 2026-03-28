@@ -1,21 +1,34 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class MessageList extends StatefulWidget {
   final String chatId;
   final String currentUserId;
-  final ScrollController scrollController;
-  final Function(BuildContext, LongPressStartDetails, String, Map<String, dynamic>) onLongPress;
+   final ScrollController scrollController;
   final Function(String, String) onReplySwipe;
+
+  // Новые коллбеки для iOS-меню
+  final Function(String, String) onReply;
+  final Function(String) onCopy;
+  final Function(String, String) onEdit;
+  final Function(String) onDeleteMe;
+  final Function(String) onDeleteAll;
+  final Function() onForward;
 
   const MessageList({
     super.key,
     required this.chatId,
     required this.currentUserId,
     required this.scrollController,
-    required this.onLongPress,
-    required this.onReplySwipe,
+     required this.onReplySwipe,
+    required this.onReply,
+    required this.onCopy,
+    required this.onEdit,
+    required this.onDeleteMe,
+    required this.onDeleteAll,
+    required this.onForward,
   });
 
   @override
@@ -26,10 +39,67 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
   @override
   bool get wantKeepAlive => true;
 
+  List<Widget> _buildMessageMenuActions(bool isMe, String messageId, String text) {
+    return [
+      CupertinoContextMenuAction(
+        child: const Text('Ответить'),
+        trailingIcon: Icons.reply,
+        onPressed: () {
+          Navigator.pop(context);
+          widget.onReply(messageId, text);
+        },
+      ),
+      CupertinoContextMenuAction(
+        child: const Text('Копировать'),
+        trailingIcon: Icons.copy,
+        onPressed: () {
+          Navigator.pop(context);
+          widget.onCopy(text);
+        },
+      ),
+      if (isMe)
+        CupertinoContextMenuAction(
+          child: const Text('Изменить'),
+          trailingIcon: Icons.edit,
+          onPressed: () {
+            Navigator.pop(context);
+            widget.onEdit(messageId, text);
+          },
+        ),
+      CupertinoContextMenuAction(
+        child: const Text('Удалить у меня'),
+        trailingIcon: Icons.delete_outline,
+        onPressed: () {
+          Navigator.pop(context);
+          widget.onDeleteMe(messageId);
+        },
+      ),
+      if (isMe)
+        CupertinoContextMenuAction(
+          isDestructiveAction: true,
+          child: const Text('Удалить у всех'),
+          trailingIcon: Icons.delete_forever,
+          onPressed: () {
+            Navigator.pop(context);
+            widget.onDeleteAll(messageId);
+          },
+        ),
+      CupertinoContextMenuAction(
+        child: const Text('Переслать'),
+        trailingIcon: Icons.forward,
+        onPressed: () {
+          Navigator.pop(context);
+          widget.onForward();
+        },
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final screenWidth = MediaQuery.of(context).size.width;
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
@@ -47,10 +117,8 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
           return const Center(child: Text('Нет сообщений. Напишите первое!'));
         }
 
-        final messages = snapshot.data!.docs;
-
-        // ← АВТОСКРОЛЛ ПОЛНОСТЬЮ УБРАН (он больше не нужен здесь)
-
+         final messages = snapshot.data!.docs;
+ 
         return ListView.builder(
           controller: widget.scrollController,
           reverse: true,
@@ -65,6 +133,8 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
             final replyToId = msgData['replyToMessageId'] as String?;
             final repliedText = msgData['repliedMessageText'] as String?;
             final isDeleted = msgData['isDeleted'] == true;
+            final messageText = msgData['text'] ?? '';
+            final isRead = msgData['read'] == true;
 
             if (isDeleted) {
               return Align(
@@ -73,17 +143,37 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
                     'Сообщение удалено',
-                    style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic),
+                    style: TextStyle(
+                      color: isLight ? Colors.grey[500] : Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
                 ),
               );
             }
 
+            // Адаптивные цвета под светлую/тёмную тему
+            final bubbleColor = isMe
+                ? (isLight ? const Color(0xFF007AFF) : Colors.blue) // iOS-синий в светлой теме
+                : (isLight ? CupertinoColors.systemGrey5 : Colors.grey[800]!);
+
+            final textColor = isMe
+                ? Colors.white
+                : (isLight ? CupertinoColors.label : Colors.white);
+
+            final timeColor = isLight
+                ? CupertinoColors.secondaryLabel
+                : Colors.white.withOpacity(0.7);
+
+            final replyContainerColor = isLight
+                ? Colors.black.withOpacity(0.06)
+                : Colors.black.withOpacity(0.25);
+
             return Dismissible(
               key: ValueKey(messages[index].id),
               direction: DismissDirection.startToEnd,
               confirmDismiss: (direction) async {
-                widget.onReplySwipe(messages[index].id, msgData['text'] ?? '');
+                widget.onReplySwipe(messages[index].id, messageText);
                 return false;
               },
               background: Container(
@@ -99,53 +189,110 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
                   ],
                 ),
               ),
-              child: GestureDetector(
-                onLongPressStart: (details) => widget.onLongPress(context, details, messages[index].id, msgData),
-                child: Align(
-                  alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                  child: Container(
-                    constraints: BoxConstraints(maxWidth: screenWidth * 0.78),
-                    margin: const EdgeInsets.symmetric(vertical: 4),
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: isMe ? Colors.blue : Colors.grey[800],
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (replyToId != null && repliedText != null)
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.25),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.reply, size: 16, color: Colors.white70),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    repliedText,
-                                    style: const TextStyle(color: Colors.white70, fontSize: 13),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+              child: Align(
+                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                child: CupertinoContextMenu.builder(
+                  actions: _buildMessageMenuActions(isMe, messages[index].id, messageText),
+                  builder: (BuildContext context, Animation<double> animation) {
+                    final scale = 1.0 + (animation.value * 0.025);
+                    final lift = -5.0 * animation.value;
+
+                    return Transform.translate(
+                      offset: Offset(0, lift),
+                      child: Transform.scale(
+                        scale: scale,
+                        child: Material(
+                          elevation: 10 * animation.value,
+                          shadowColor: Colors.black.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(18),
+                          color: Colors.transparent,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: Container(
+                              constraints: BoxConstraints(maxWidth: screenWidth * 0.78),
+                              margin: const EdgeInsets.symmetric(vertical: 4),
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                              decoration: BoxDecoration(
+                                color: bubbleColor,
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (replyToId != null && repliedText != null)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 6),
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: replyContainerColor,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.reply, size: 16, color: Colors.white70),
+                                          const SizedBox(width: 6),
+                                          Flexible(
+                                            child: Text(
+                                              repliedText,
+                                              style: const TextStyle(color: Colors.white70, fontSize: 13),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  Text(
+                                    messageText,
+                                    style: TextStyle(color: textColor, fontSize: 16),
                                   ),
-                                ),
-                              ],
+                                  if (msgData['isEdited'] == true)
+                                    Text(
+                                      'изменено',
+                                      style: TextStyle(
+                                        color: isMe
+                                            ? Colors.white60
+                                            : (isLight ? CupertinoColors.secondaryLabel : Colors.white60),
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        time,
+                                        style: TextStyle(color: timeColor, fontSize: 11),
+                                      ),
+                                      if (isMe) ...[
+                                        const SizedBox(width: 4),
+                                        if (isRead)
+                                          const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.done, size: 14, color: Colors.white),
+                                              Icon(Icons.done, size: 14, color: Colors.white),
+                                            ],
+                                          )
+                                        else
+                                          Icon(
+                                            Icons.done,
+                                            size: 14,
+                                            color: isLight ? CupertinoColors.secondaryLabel : Colors.grey[400],
+                                          ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        Text(msgData['text'], style: const TextStyle(color: Colors.white, fontSize: 16)),
-                        if (msgData['isEdited'] == true) const Text('изменено', style: TextStyle(color: Colors.white60, fontSize: 10)),
-                        const SizedBox(height: 4),
-                        Text(time, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11)),
-                      ],
-                    ),
-                  ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             );
