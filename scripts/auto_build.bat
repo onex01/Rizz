@@ -9,10 +9,9 @@ set SERVER_USER=root
 set SERVER_PASS=dfkj04251
 set SERVER_HOST=onex01.ru
 set SERVER_PORT=22
-set SERVER_PATH=/var/www/uploads/Android/APKs/ChatiX
-set UPLOAD_URL=https://uploads.onex01.ru/Android/APKs/ChatiX
-
-set PROJECT_DIR=C:\ChatiX\ChatiX
+set SERVER_PATH=/var/www/uploads/Android/APKs/Rizz
+set UPLOAD_URL=https://uploads.onex01.ru/Android/APKs/Rizz
+set PROJECT_DIR=C:\Rizz\Rizz
 set BACKUP_DIR=%PROJECT_DIR%\.backup
 
 cd /d %PROJECT_DIR%
@@ -92,7 +91,7 @@ if errorlevel 1 (
 echo  Build successful!
 
 REM ===== APK =====
-set APK_NAME=ChatiX-%NEW_VERSION_NUMBER%.apk
+set APK_NAME=Rizz-%NEW_VERSION_NUMBER%.apk
 
 copy build\app\outputs\flutter-apk\app-release.apk build\app\outputs\flutter-apk\%APK_NAME%
 

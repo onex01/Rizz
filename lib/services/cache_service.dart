@@ -1,6 +1,5 @@
 import 'dart:io';
-
-import 'package:ChatiX/services/file_converter_service.dart';
+import '../services/file_converter_service.dart';
 
 /// Глобальный кэш для файлов сообщений (из hex)
 /// Решает главную проблему — повторную конвертацию hex → File при каждом rebuild'е списка

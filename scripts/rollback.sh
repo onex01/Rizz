@@ -5,7 +5,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-PROJECT_DIR="/home/one/ChatiX/ChatiX"
+PROJECT_DIR="/home/one/Rizz/"
 BACKUP_DIR="$PROJECT_DIR/.backup"
 
 cd $PROJECT_DIR

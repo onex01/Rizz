@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.duality_project.chatix"
+    namespace = "com.dualproj.rizz"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
     
@@ -25,7 +25,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.duality_project.chatix"
+        applicationId = "com.dualproj.rizz"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

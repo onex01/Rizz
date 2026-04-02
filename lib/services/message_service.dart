@@ -1,13 +1,13 @@
 import 'dart:io';
 
-import 'package:ChatiX/services/file_converter_service.dart';
+import '../services/file_converter_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-  import 'package:image_picker/image_picker.dart';
- import 'package:path/path.dart' as p;
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
  
 class MessageService {
   static final _firestore = FirebaseFirestore.instance;
@@ -315,5 +315,42 @@ class MessageService {
       'lastMessage': lastMessageText,
       'lastMessageTime': FieldValue.serverTimestamp(),
     });
+  }
+
+  static Future<void> sendLargeFile(String chatId, File file, {String? replyToId}) async {
+    final bytes = await file.readAsBytes();
+    const chunkSize = 400 * 1024; // 400KB
+    int totalChunks = (bytes.length / chunkSize).ceil();
+    List<String> chunkIds = [];
+
+    for (int i = 0; i < totalChunks; i++) {
+      final start = i * chunkSize;
+      final end = (i + 1) * chunkSize > bytes.length ? bytes.length : (i + 1) * chunkSize;
+      final chunkBytes = bytes.sublist(start, end);
+      final hex = _bytesToHex(chunkBytes);
+      final chunkId = '${DateTime.now().millisecondsSinceEpoch}_$i';
+      await FirebaseFirestore.instance.collection('chunks').doc(chunkId).set({
+        'hex': hex,
+        'index': i,
+        'total': totalChunks,
+        'fileId': chatId,
+      });
+      chunkIds.add(chunkId);
+    }
+
+    await FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').add({
+      'type': 'file_large',
+      'fileName': file.path.split('/').last,
+      'fileSize': bytes.length,
+      'totalChunks': totalChunks,
+      'chunkIds': chunkIds,
+      'senderId': FirebaseAuth.instance.currentUser!.uid,
+      'timestamp': FieldValue.serverTimestamp(),
+      'replyToMessageId': replyToId,
+    });
+  }
+
+  static String _bytesToHex(List<int> bytes) {
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 }

@@ -60,9 +60,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
       final GoogleSignIn googleSignIn = GoogleSignIn(
         scopes: ['email', 'profile'],
       );
-      
       _googleSignIn = googleSignIn;
-       _googleSignIn?.onCurrentUserChanged.listen(_handleGoogleSignIn);
+      _googleSignIn?.onCurrentUserChanged.listen(_handleGoogleSignIn);
       _checkExistingSession();
     } catch (e) {
       print('Error initializing Google Sign In: $e');
@@ -80,14 +79,13 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     }
   }
 
-  // ==================== GOOGLE SIGN IN ====================
   Future<void> _handleGoogleSignIn(GoogleSignInAccount? account) async {
     if (account == null || !mounted) return;
     setState(() => _isLoading = true);
 
     try {
       final GoogleSignInAuthentication googleAuth = await account.authentication;
-       final credential = GoogleAuthProvider.credential(
+      final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
@@ -129,7 +127,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _signInWithGoogle() async {
-     if (_isLoading || _googleSignIn == null) return;
+    if (_isLoading || _googleSignIn == null) return;
     setState(() => _isLoading = true);
 
     try {
@@ -148,7 +146,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _submit() async {
-     if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
     try {
@@ -157,7 +155,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
-         if (mounted) {
+        if (mounted) {
           Fluttertoast.showToast(msg: "Вход выполнен успешно!", gravity: ToastGravity.BOTTOM);
         }
       } else {
@@ -165,7 +163,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
         );
-         await userCredential.user!.sendEmailVerification();
+        await userCredential.user!.sendEmailVerification();
 
         await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
           'uid': userCredential.user!.uid,
@@ -182,7 +180,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
             msg: "Аккаунт создан! Подтвердите email",
             gravity: ToastGravity.BOTTOM,
             toastLength: Toast.LENGTH_LONG,
-           );
+          );
           await FirebaseAuth.instance.signOut();
 
           setState(() {
@@ -244,7 +242,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           child: Container(
                             padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.1),
+                              color: Colors.blue.withValues(alpha: 0.1),
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(
@@ -276,89 +274,81 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                     ),
                     const SizedBox(height: 40),
 
-                                        // Поле Email
-                    AnimatedOpacity(
-                      opacity: _fadeAnimation.value,
-                      duration: const Duration(milliseconds: 400),
-                      child: TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        style: const TextStyle(color: Colors.black), // ← всегда чёрный
-                        decoration: InputDecoration(
-                          labelText: 'Email',
-                          labelStyle: TextStyle(
-                            color: isLight ? Colors.grey[700] : Colors.grey[400],
-                          ),
-                          prefixIcon: Icon(
-                            Icons.email_outlined,
-                            color: isLight ? Colors.grey[700] : Colors.grey[400],
-                          ),
-                          filled: true,
-                          fillColor: isLight ? Colors.white : Colors.grey[900],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: isLight ? Colors.grey[300]! : Colors.grey[700]!,
-                              width: 1.5,
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.blue, width: 2),
+                    // Поле Email (убрана AnimatedOpacity)
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                      decoration: InputDecoration(
+                        labelText: 'Email',
+                        labelStyle: TextStyle(
+                          color: isLight ? Colors.grey[700] : Colors.grey[400],
+                        ),
+                        prefixIcon: Icon(
+                          Icons.email_outlined,
+                          color: isLight ? Colors.grey[700] : Colors.grey[400],
+                        ),
+                        filled: true,
+                        fillColor: isLight ? Colors.white : Colors.grey[900],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: isLight ? Colors.grey[300]! : Colors.grey[700]!,
+                            width: 1.5,
                           ),
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) return 'Введите email';
-                          if (!EmailValidator.validate(value)) return 'Неверный формат email';
-                          return null;
-                        },
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.blue, width: 2),
+                        ),
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) return 'Введите email';
+                        if (!EmailValidator.validate(value)) return 'Неверный формат email';
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 16),
 
                     // Поле Пароль
-                    AnimatedOpacity(
-                      opacity: _fadeAnimation.value,
-                      duration: const Duration(milliseconds: 500),
-                      child: TextFormField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        style: const TextStyle(color: Colors.black), // ← всегда чёрный
-                        decoration: InputDecoration(
-                          labelText: 'Пароль',
-                          labelStyle: TextStyle(
-                            color: isLight ? Colors.grey[700] : Colors.grey[400],
-                          ),
-                          prefixIcon: Icon(
-                            Icons.lock_outline,
-                            color: isLight ? Colors.grey[700] : Colors.grey[400],
-                          ),
-                          filled: true,
-                          fillColor: isLight ? Colors.white : Colors.grey[900],
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: isLight ? Colors.grey[300]! : Colors.grey[700]!,
-                              width: 1.5,
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.blue, width: 2),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: true,
+                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
+                      decoration: InputDecoration(
+                        labelText: 'Пароль',
+                        labelStyle: TextStyle(
+                          color: isLight ? Colors.grey[700] : Colors.grey[400],
+                        ),
+                        prefixIcon: Icon(
+                          Icons.lock_outline,
+                          color: isLight ? Colors.grey[700] : Colors.grey[400],
+                        ),
+                        filled: true,
+                        fillColor: isLight ? Colors.white : Colors.grey[900],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: isLight ? Colors.grey[300]! : Colors.grey[700]!,
+                            width: 1.5,
                           ),
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) return 'Введите пароль';
-                          if (value.length < 6) return 'Пароль должен содержать минимум 6 символов';
-                          return null;
-                        },
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Colors.blue, width: 2),
+                        ),
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) return 'Введите пароль';
+                        if (value.length < 6) return 'Пароль должен содержать минимум 6 символов';
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 32),
 

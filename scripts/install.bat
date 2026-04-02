@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set URL=https://uploads.onex01.ru/Android/APKs/ChatiX/version.json
+set URL=https://uploads.onex01.ru/Android/APKs/Rizz/version.json
 
 echo 📡 Getting latest version...
 
@@ -16,8 +16,8 @@ if "%VERSION%"=="" (
     exit /b 1
 )
 
-set APK_FILE=ChatiX-%VERSION%.apk
-set APK_URL=https://uploads.onex01.ru/Android/APKs/ChatiX/%APK_FILE%
+set APK_FILE=Rizz-%VERSION%.apk
+set APK_URL=https://uploads.onex01.ru/Android/APKs/Rizz/%APK_FILE%
 
 echo 📱 Downloading %APK_FILE%...
 curl -o %APK_FILE% %APK_URL%

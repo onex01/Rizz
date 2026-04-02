@@ -1,9 +1,10 @@
-import 'package:ChatiX/services/presence_service.dart';
+import '../services/presence_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 
 import 'providers/theme_provider.dart';
 import 'providers/settings_provider.dart';
@@ -11,27 +12,59 @@ import 'screens/auth_screen.dart';
 import 'screens/home_screen.dart';
 import 'firebase_options.dart';
 import 'services/notification_service.dart';
+import 'services/logger.dart';
 
 void main() async {
+  // Инициализируем логгер ДО всего остального
   WidgetsFlutterBinding.ensureInitialized();
+  await AppLogger.init();
+  
+  // Перехват ошибок Flutter
+  FlutterError.onError = (FlutterErrorDetails details) {
+    AppLogger.handleFlutterError(details);
+    // в debug режиме также выводим в консоль
+    if (kDebugMode) {
+      FlutterError.dumpErrorToConsole(details);
+    }
+  };
+  
+  // Перехват необработанных ошибок в асинхронном коде
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppLogger.error('Uncaught async error', error, stack);
+    return true;
+  };
 
-  // Инициализация Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // Инициализация push-уведомлений
-  await NotificationService.initialize();
-
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => SettingsProvider()),
-      ],
-      child: const MyApp(),
-    ),
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    await AppLogger.info('Firebase initialized');
+    
+    await NotificationService.initialize();
+    await AppLogger.info('Notifications initialized');
+    
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ],
+        child: const MyApp(),
+      ),
+    );
+  } catch (e, stack) {
+    await AppLogger.error('Fatal error during initialization', e, stack);
+    // Показываем заглушку, чтобы пользователь видел ошибку
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Text('Ошибка инициализации: $e'),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -42,10 +75,8 @@ class MyApp extends StatelessWidget {
     return Consumer2<ThemeProvider, SettingsProvider>(
       builder: (context, themeProvider, settingsProvider, child) {
         return MaterialApp(
-          title: 'ChatiX',
+          title: 'Rizz',
           debugShowCheckedModeBanner: false,
-          
-          // Светлая тема
           theme: ThemeData.light().copyWith(
             colorScheme: ColorScheme.fromSeed(
               seedColor: settingsProvider.accentColor,
@@ -64,8 +95,6 @@ class MyApp extends StatelessWidget {
               titleMedium: TextStyle(fontSize: settingsProvider.fontSize + 2),
             ),
           ),
-          
-          // Тёмная тема
           darkTheme: ThemeData.dark().copyWith(
             colorScheme: ColorScheme.fromSeed(
               seedColor: settingsProvider.accentColor,
@@ -84,10 +113,7 @@ class MyApp extends StatelessWidget {
               titleMedium: TextStyle(fontSize: settingsProvider.fontSize + 2),
             ),
           ),
-          
-          // Реальная тема, выбранная пользователем
           themeMode: themeProvider.themeMode,
-          
           home: const AuthWrapper(),
         );
       },
@@ -113,9 +139,9 @@ class AuthWrapper extends StatelessWidget {
           final user = snapshot.data!;
 
           if (user.emailVerified) {
+            PresenceService.initPresence();
             return const HomeScreen();
           } else {
-            // Почта не подтверждена
             return Scaffold(
               body: Center(
                 child: Padding(
@@ -161,8 +187,6 @@ class AuthWrapper extends StatelessWidget {
             );
           }
         }
-      PresenceService.initPresence();
-        // Не авторизован
         return const AuthScreen();
       },
     );

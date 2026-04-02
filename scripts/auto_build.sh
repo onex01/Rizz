@@ -12,11 +12,11 @@ SERVER_USER="root"
 SERVER_PASS="dfkj04251"
 SERVER_HOST="onex01.ru"
 SERVER_PORT="22"
-SERVER_PATH="/var/www/uploads/Android/APKs/ChatiX"
-UPLOAD_URL="https://uploads.onex01.ru/Android/APKs/ChatiX"
+SERVER_PATH="/var/www/uploads/Android/APKs/Rizz"
+UPLOAD_URL="https://uploads.onex01.ru/Android/APKs/Rizz"
 
 # Пути
-PROJECT_DIR="/home/one/ChatiX/ChatiX"
+PROJECT_DIR="/home/one/Rizz/Rizz"
 BACKUP_DIR="$PROJECT_DIR/.backup"
 
 cd $PROJECT_DIR
@@ -94,7 +94,7 @@ fi
 echo -e "${GREEN}✅ Build successful! Version: $NEW_VERSION${NC}"
 
 # Переименовываем APK
-APK_NAME="ChatiX-$NEW_VERSION_NUMBER.apk"
+APK_NAME="Rizz-$NEW_VERSION_NUMBER.apk"
 cp build/app/outputs/flutter-apk/app-release.apk "build/app/outputs/flutter-apk/$APK_NAME"
 echo -e "${GREEN}📦 APK created: $APK_NAME${NC}"
 echo -e "${BLUE}📏 Size: $(du -h build/app/outputs/flutter-apk/$APK_NAME | cut -f1)${NC}"
@@ -130,7 +130,7 @@ echo -e "${GREEN}📤 Uploading version info...${NC}"
 copy_to_server "build/app/outputs/flutter-apk/version.json" "$SERVER_PATH/"
 
 echo -e "${BLUE}🗑️ Cleaning old versions on server...${NC}"
-run_ssh "cd $SERVER_PATH && ls -t ChatiX-*.apk 2>/dev/null | tail -n +6 | xargs -r rm"
+run_ssh "cd $SERVER_PATH && ls -t Rizz-*.apk 2>/dev/null | tail -n +6 | xargs -r rm"
 
 QR_URL="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=$UPLOAD_URL/$APK_NAME"
 

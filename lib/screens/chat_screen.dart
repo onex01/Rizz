@@ -1,14 +1,18 @@
+import 'dart:io';
 import 'dart:async';
-import 'package:ChatiX/services/circle_video_service.dart';
-import 'package:ChatiX/services/message_service.dart';
-import 'package:ChatiX/services/notification_service.dart';
-import 'package:ChatiX/services/user_cache_service.dart';
+import '../services/circle_video_service.dart';
+import '../services/message_service.dart';
+import '../services/notification_service.dart';
+import '../services/user_cache_service.dart';
+import '../services/voice_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
+import '../providers/settings_provider.dart';
 import '../widgets/message_list.dart';
 import 'user_profile_screen.dart';
 
@@ -27,36 +31,16 @@ class _ChatScreenState extends State<ChatScreen> {
   final currentUser = FirebaseAuth.instance.currentUser!;
 
   String? otherUserNickname;
-   String? otherUserPhotoUrl;
+  String? otherUserPhotoUrl;
   String? _replyingToId;
   String? _replyingToText;
 
   final ScrollController _scrollController = ScrollController();
 
-  // ==================== СТАТУСЫ ОНЛАЙН / ПЕЧАТАЕТ ====================
-  bool? _isOnlineInChat;   // находится ли собеседник именно в этом чате
+  bool? _isOnlineInChat;
   DateTime? _lastSeen;
   bool _isTyping = false;
-
   StreamSubscription? _chatStatusSubscription;
-
-  // Кэш файлов для оптимизации (убирает повторные FutureBuilder при скролле)
-
-  String _getStatusText() {
-    if (_isTyping) return 'печатает...';
-    if (_isOnlineInChat == true) return 'В сети';
-    if (_lastSeen == null) return 'Был(а) недавно';
-    
-    final now = DateTime.now();
-    final difference = now.difference(_lastSeen!);
-    
-    if (difference.inMinutes < 1) return 'Был(а) недавно';
-    if (difference.inHours < 1) return 'Был(а) ${difference.inMinutes} мин назад';
-    if (difference.inDays < 1) return 'Был(а) ${difference.inHours} ч назад';
-    if (difference.inDays < 7) return 'Был(а) ${difference.inDays} дн назад';
-    
-    return 'Был(а) ${_lastSeen!.day}.${_lastSeen!.month}.${_lastSeen!.year}';
-  }
 
   @override
   void initState() {
@@ -67,62 +51,54 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadOtherUserInfo() async {
-  final cache = UserCacheService();
+    final cache = UserCacheService();
 
-  if (widget.otherUserId == currentUser.uid) {
-    setState(() => otherUserNickname = 'Заметки');
-    return;
-  }
+    if (widget.otherUserId == currentUser.uid) {
+      setState(() => otherUserNickname = 'Заметки');
+      return;
+    }
 
-  // Сначала берём из кэша (мгновенно)
-  final cachedNickname = cache.getNickname(widget.otherUserId);
-  if (cachedNickname != null) {
-    setState(() {
-      otherUserNickname = cachedNickname;
-      otherUserPhotoUrl = cache.getPhotoUrl(widget.otherUserId);
+    final cachedNickname = cache.getNickname(widget.otherUserId);
+    if (cachedNickname != null) {
+      setState(() {
+        otherUserNickname = cachedNickname;
+        otherUserPhotoUrl = cache.getPhotoUrl(widget.otherUserId);
+      });
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(widget.otherUserId).get();
+      if (doc.exists && mounted) {
+        final data = doc.data()!;
+        final nickname = data['nickname'] ?? widget.otherUserId;
+        final photoUrl = data['photoUrl'];
+
+        setState(() {
+          otherUserNickname = nickname;
+          otherUserPhotoUrl = photoUrl;
+        });
+        await cache.cacheUser(widget.otherUserId, nickname, photoUrl);
+      }
+    } catch (e) {
+      print("Ошибка загрузки профиля: $e");
+    }
+
+    if (mounted) {
+      NotificationService.saveTokenToFirestore(currentUser.uid);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _markMessagesAsRead();
     });
   }
 
-  // Затем обновляем из Firestore в фоне
-  try {
-    final doc = await FirebaseFirestore.instance.collection('users').doc(widget.otherUserId).get();
-    if (doc.exists && mounted) {
-      final data = doc.data()!;
-      final nickname = data['nickname'] ?? widget.otherUserId;
-      final photoUrl = data['photoUrl'];
-
-      setState(() {
-        otherUserNickname = nickname;
-        otherUserPhotoUrl = photoUrl;
-      });
-
-      // Сохраняем в кэш
-      await cache.cacheUser(widget.otherUserId, nickname, photoUrl);
-    }
-  } catch (e) {
-    print("Ошибка загрузки профиля: $e");
-  }
-
-  if (mounted) {
-    NotificationService.saveTokenToFirestore(currentUser.uid);
-  }
-
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    _markMessagesAsRead();
-  });
-}
-
-  // ==================== НОВАЯ ЛОГИКА СТАТУСОВ (реал-тайм в чате) ====================
   void _setupRealTimeChatStatus() {
     final chatRef = FirebaseFirestore.instance.collection('chats').doc(widget.chatId);
-
     _chatStatusSubscription = chatRef.snapshots().listen((snapshot) {
       if (!mounted || !snapshot.exists) return;
       final data = snapshot.data()!;
-
       final onlineUsers = List<String>.from(data['onlineUsers'] ?? []);
       final typingUsers = List<String>.from(data['typingUsers'] ?? []);
-
       setState(() {
         _isOnlineInChat = onlineUsers.contains(widget.otherUserId);
         _isTyping = typingUsers.contains(widget.otherUserId);
@@ -151,7 +127,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (widget.otherUserId == currentUser.uid) return;
     final chatRef = FirebaseFirestore.instance.collection('chats').doc(widget.chatId);
     final hasText = _messageController.text.trim().isNotEmpty;
-
     if (hasText) {
       chatRef.update({'typingUsers': FieldValue.arrayUnion([currentUser.uid])});
     } else {
@@ -161,20 +136,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _markMessagesAsRead() async {
     if (widget.otherUserId == currentUser.uid) return;
-
     try {
       final messagesRef = FirebaseFirestore.instance
           .collection('chats')
           .doc(widget.chatId)
           .collection('messages');
-
       final unreadSnapshot = await messagesRef
           .where('senderId', isEqualTo: widget.otherUserId)
           .where('isRead', isEqualTo: false)
           .get();
-
       if (unreadSnapshot.docs.isEmpty) return;
-
       final batch = FirebaseFirestore.instance.batch();
       for (var doc in unreadSnapshot.docs) {
         batch.update(doc.reference, {'isRead': true});
@@ -210,9 +181,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
-
     if (newText == null || newText.isEmpty || newText == oldText) return;
-
     await FirebaseFirestore.instance
         .collection('chats')
         .doc(widget.chatId)
@@ -257,11 +226,8 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // ==================== МЕНЮ ВЛОЖЕНИЙ ====================
-    // ==================== МЕНЮ ВЛОЖЕНИЙ ====================
   void _showAttachmentMenu() {
     final isLight = Theme.of(context).brightness == Brightness.light;
-    
     showModalBottomSheet(
       context: context,
       backgroundColor: isLight ? Colors.white : const Color(0xFF1C1C1E),
@@ -283,7 +249,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.blue.withOpacity(0.1),
+                backgroundColor: Colors.blue.withValues(alpha: 0.1),
                 child: const Icon(Icons.photo_library, color: Colors.blue),
               ),
               title: const Text('Фото из галереи'),
@@ -294,7 +260,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.green.withOpacity(0.1),
+                backgroundColor: Colors.green.withValues(alpha: 0.1),
                 child: const Icon(Icons.insert_drive_file, color: Colors.green),
               ),
               title: const Text('Файл'),
@@ -305,7 +271,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.purple.withOpacity(0.1),
+                backgroundColor: Colors.purple.withValues(alpha: 0.1),
                 child: const Icon(Icons.camera_alt, color: Colors.purple),
               ),
               title: const Text('Снять фото'),
@@ -314,21 +280,26 @@ class _ChatScreenState extends State<ChatScreen> {
                 _takePhoto();
               },
             ),
-            // ==================== НОВАЯ КНОПКА ВИДЕОКРУЖКА ====================
             ListTile(
               leading: CircleAvatar(
-                backgroundColor: Colors.pink.withOpacity(0.1),
+                backgroundColor: Colors.red.withValues(alpha: 0.1),
+                child: const Icon(Icons.mic, color: Colors.red),
+              ),
+              title: const Text('Голосовое сообщение'),
+              onTap: () {
+                Navigator.pop(context);
+                _startVoiceRecording();
+              },
+            ),
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.pink.withValues(alpha: 0.1),
                 child: const Icon(Icons.videocam_rounded, color: Colors.pink),
               ),
               title: const Text('Видеокружок'),
               onTap: () {
                 Navigator.pop(context);
-                CircleVideoService.recordAndSendCircle(
-                  context: context,                    // ← ОБЯЗАТЕЛЬНО
-                  chatId: widget.chatId,
-                  replyToMessageId: _replyingToId,
-                  repliedMessageText: _replyingToText,
-                );
+                _startCircleVideoRecording();
               },
             ),
             const SizedBox(height: 12),
@@ -338,22 +309,45 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ==================== ОТПРАВКА ТЕКСТА ====================
+  // Новая запись видеокружка через отдельный экран с удержанием
+  Future<void> _startCircleVideoRecording() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => CircleRecorderOverlay()),
+    );
+    if (result is File) {
+      await CircleVideoService.sendRecordedCircle(widget.chatId, result, replyToId: _replyingToId);
+      setState(() => _replyingToId = null);
+    }
+  }
+
+  // Запись голосового
+  Future<void> _startVoiceRecording() async {
+    await VoiceService.startRecording();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => VoiceRecorderDialog(
+        onSend: (File file) async {
+          await VoiceService.sendVoiceMessage(widget.chatId, file, replyToMessageId: _replyingToId);
+          setState(() => _replyingToId = null);
+        },
+      ),
+    );
+  }
+
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
-
     await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
       'typingUsers': FieldValue.arrayRemove([currentUser.uid])
     });
-
     await MessageService.sendTextMessage(
       chatId: widget.chatId,
       text: text,
       replyToMessageId: _replyingToId,
       repliedMessageText: _replyingToText,
     );
-
     if (mounted) {
       setState(() {
         _replyingToId = null;
@@ -361,7 +355,6 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _messageController.clear();
     }
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
@@ -369,19 +362,13 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // ==================== ОТПРАВКА ФОТОГРАФИИ ====================
   Future<void> _sendImage() async {
     await MessageService.pickAndSendImage(
       chatId: widget.chatId,
       replyToMessageId: _replyingToId,
       repliedMessageText: _replyingToText,
     );
-
-    setState(() {
-      _replyingToId = null;
-      _replyingToText = null;
-    });
-
+    setState(() => _replyingToId = null);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
@@ -389,19 +376,13 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // ==================== ОТПРАВКА ФАЙЛА ====================
   Future<void> _sendFile() async {
     await MessageService.pickAndSendFile(
       chatId: widget.chatId,
       replyToMessageId: _replyingToId,
       repliedMessageText: _replyingToText,
     );
-
-    setState(() {
-      _replyingToId = null;
-      _replyingToText = null;
-    });
-
+    setState(() => _replyingToId = null);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
@@ -409,24 +390,31 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  // ==================== СНЯТЬ ФОТО ====================
   Future<void> _takePhoto() async {
     await MessageService.takeAndSendPhoto(
       chatId: widget.chatId,
       replyToMessageId: _replyingToId,
       repliedMessageText: _replyingToText,
     );
-
-    setState(() {
-      _replyingToId = null;
-      _replyingToText = null;
-    });
-
+    setState(() => _replyingToId = null);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
       }
     });
+  }
+
+  String _getStatusText() {
+    if (_isTyping) return 'печатает...';
+    if (_isOnlineInChat == true) return 'В сети';
+    if (_lastSeen == null) return 'Был(а) недавно';
+    final now = DateTime.now();
+    final difference = now.difference(_lastSeen!);
+    if (difference.inMinutes < 1) return 'Был(а) недавно';
+    if (difference.inHours < 1) return 'Был(а) ${difference.inMinutes} мин назад';
+    if (difference.inDays < 1) return 'Был(а) ${difference.inHours} ч назад';
+    if (difference.inDays < 7) return 'Был(а) ${difference.inDays} дн назад';
+    return 'Был(а) ${_lastSeen!.day}.${_lastSeen!.month}.${_lastSeen!.year}';
   }
 
   @override
@@ -442,6 +430,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final displayName = otherUserNickname ?? widget.otherUserId;
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final settings = Provider.of<SettingsProvider>(context);
+    final bgColor = settings.chatBackgroundColor ?? (isLight ? Colors.white : Colors.black);
+    final wallpaper = settings.wallpaperUrl;
 
     return Scaffold(
       appBar: AppBar(
@@ -494,99 +485,86 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         centerTitle: false,
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: MessageList(
-              chatId: widget.chatId,
-              currentUserId: currentUser.uid,
-              scrollController: _scrollController,
-              onReplySwipe: _handleReplySwipe,
-              onReply: _handleReply,
-              onCopy: _handleCopy,
-              onEdit: _handleEdit,
-              onDeleteMe: (id) => _handleDelete(id, forEveryone: false),
-              onDeleteAll: (id) => _handleDelete(id, forEveryone: true),
-              onForward: _handleForward,
+      body: Container(
+        decoration: wallpaper != null
+            ? BoxDecoration(image: DecorationImage(image: NetworkImage(wallpaper), fit: BoxFit.cover))
+            : BoxDecoration(color: bgColor),
+        child: Column(
+          children: [
+            Expanded(
+              child: MessageList(
+                chatId: widget.chatId,
+                currentUserId: currentUser.uid,
+                scrollController: _scrollController,
+                onReplySwipe: _handleReplySwipe,
+                onReply: _handleReply,
+                onCopy: _handleCopy,
+                onEdit: _handleEdit,
+                onDeleteMe: (id) => _handleDelete(id, forEveryone: false),
+                onDeleteAll: (id) => _handleDelete(id, forEveryone: true),
+                onForward: _handleForward,
+              ),
             ),
-          ),
-
-          // ==================== ПОЛЕ ВВОДА ====================
-          Container(
-            padding: EdgeInsets.fromLTRB(8, 8, 8, MediaQuery.of(context).padding.bottom + 8),
-            decoration: BoxDecoration(
-              color: isLight ? CupertinoColors.systemGrey6 : Colors.grey[900],
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(isLight ? 0.08 : 0.15),
-                  blurRadius: 10,
-                  offset: const Offset(0, -2),
-                ),
-              ],
-            ),
-            child: Column(
-               children: [
-                if (_replyingToId != null)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isLight ? Colors.blue.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.reply, color: Colors.blue),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Ответ на сообщение', style: TextStyle(color: Colors.blue, fontSize: 12)),
-                              Text(
-                                _replyingToText ?? '',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: isLight ? Colors.black87 : Colors.white70),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, color: Colors.grey),
-                          onPressed: _cancelReply,
-                        ),
-                      ],
-                    ),
+            Container(
+              padding: EdgeInsets.fromLTRB(8, 8, 8, MediaQuery.of(context).padding.bottom + 8),
+              decoration: BoxDecoration(
+                color: isLight ? CupertinoColors.systemGrey6 : Colors.grey[900],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isLight ? 0.08 : 0.15),
+                    blurRadius: 10,
+                    offset: const Offset(0, -2),
                   ),
- 
-                Row(
-                  children: [
-                    // Кнопка прикрепить
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: _showAttachmentMenu,
-                      child: Icon(
-                        CupertinoIcons.paperclip,
-                        color: isLight ? CupertinoColors.systemGrey : Colors.grey,
-                        size: 28,
+                ],
+              ),
+              child: Column(
+                children: [
+                  if (_replyingToId != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: isLight ? Colors.blue.withValues(alpha: 0.1) : Colors.blue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.reply, color: Colors.blue),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Ответ на сообщение', style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                Text(
+                                  _replyingToText ?? '',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: isLight ? Colors.black87 : Colors.white70),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.grey),
+                            onPressed: _cancelReply,
+                          ),
+                        ],
                       ),
                     ),
-
-                    const SizedBox(width: 4),
-
-                    // Поле ввода
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isLight ? CupertinoColors.white : Colors.grey[800],
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: isLight ? CupertinoColors.systemGrey4 : Colors.transparent,
-                            width: 1,
-                          ),
+                  Row(
+                    children: [
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: _showAttachmentMenu,
+                        child: Icon(
+                          CupertinoIcons.paperclip,
+                          color: isLight ? CupertinoColors.systemGrey : Colors.grey,
+                          size: 28,
                         ),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
                         child: CupertinoTextField(
                           controller: _messageController,
                           placeholder: 'Сообщение...',
@@ -599,58 +577,47 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                           decoration: const BoxDecoration(),
                           maxLines: null,
+                          minLines: 1,
                           keyboardAppearance: isLight ? Brightness.light : Brightness.dark,
                           textCapitalization: TextCapitalization.sentences,
                           onChanged: (_) => _updateTypingStatus(),
                         ),
                       ),
-                    ),
-
-                    const SizedBox(width: 4),
-
-                    // КНОПКА ЗАПИСИ ВИДЕОКРУЖКА (вместо эмодзи)
-                                        // КНОПКА ЗАПИСИ ВИДЕОКРУЖКА
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        CircleVideoService.recordAndSendCircle(
-                          context: context,                    // ← ОБЯЗАТЕЛЬНО
-                          chatId: widget.chatId,
-                          replyToMessageId: _replyingToId,
-                          repliedMessageText: _replyingToText,
-                        );
-                      },
-                      child: Icon(
-                        Icons.videocam_rounded,
-                        color: isLight ? CupertinoColors.systemGrey : Colors.grey,
-                        size: 28,
+                      const SizedBox(width: 4),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () {},
+                        onLongPress: _startCircleVideoRecording,
+                        child: Icon(
+                          Icons.videocam_rounded,
+                          color: isLight ? CupertinoColors.systemGrey : Colors.grey,
+                          size: 28,
+                        ),
                       ),
-                    ),
-
-                    // Кнопка отправки
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _messageController,
-                      builder: (context, value, child) {
-                        final hasText = value.text.trim().isNotEmpty;
-                        return CupertinoButton(
-                          padding: EdgeInsets.zero,
-                          onPressed: hasText ? _sendMessage : null,
-                          child: Icon(
-                            CupertinoIcons.arrow_up_circle_fill,
-                            color: hasText
-                                ? CupertinoColors.activeBlue
-                                : (isLight ? CupertinoColors.systemGrey3 : Colors.grey),
-                            size: 32,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _messageController,
+                        builder: (context, value, child) {
+                          final hasText = value.text.trim().isNotEmpty;
+                          return CupertinoButton(
+                            padding: EdgeInsets.zero,
+                            onPressed: hasText ? _sendMessage : null,
+                            child: Icon(
+                              CupertinoIcons.arrow_up_circle_fill,
+                              color: hasText
+                                  ? CupertinoColors.activeBlue
+                                  : (isLight ? CupertinoColors.systemGrey3 : Colors.grey),
+                              size: 32,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

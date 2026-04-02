@@ -6,11 +6,13 @@ class SettingsProvider extends ChangeNotifier {
   double _fontSize = 16.0;
   Color _accentColor = Colors.blue;
   int _cacheSize = 100; // MB
+  Color? _chatBackgroundColor;
 
   String? get wallpaperUrl => _wallpaperUrl;
   double get fontSize => _fontSize;
   Color get accentColor => _accentColor;
   int get cacheSize => _cacheSize;
+  Color? get chatBackgroundColor => _chatBackgroundColor;
 
   SettingsProvider() {
     _loadSettings();
@@ -19,9 +21,13 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _fontSize = prefs.getDouble('fontSize') ?? 16.0;
-    _accentColor = Color(prefs.getInt('accentColor') ?? Colors.blue.value);
+    _accentColor = Color(prefs.getInt('accentColor') ?? Colors.blue.toARGB32());
     _cacheSize = prefs.getInt('cacheSize') ?? 100;
     _wallpaperUrl = prefs.getString('wallpaperUrl');
+    int? bgColorValue = prefs.getInt('chatBackgroundColor');
+    if (bgColorValue != null) {
+      _chatBackgroundColor = Color(bgColorValue);
+    }
     notifyListeners();
   }
 
@@ -36,6 +42,17 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setChatBackgroundColor(Color? color) async {
+    _chatBackgroundColor = color;
+    final prefs = await SharedPreferences.getInstance();
+    if (color != null) {
+      await prefs.setInt('chatBackgroundColor', color.toARGB32());
+    } else {
+      await prefs.remove('chatBackgroundColor');
+    }
+    notifyListeners();
+  }
+
   Future<void> setFontSize(double size) async {
     _fontSize = size;
     final prefs = await SharedPreferences.getInstance();
@@ -46,7 +63,7 @@ class SettingsProvider extends ChangeNotifier {
   Future<void> setAccentColor(Color color) async {
     _accentColor = color;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('accentColor', color.value);
+    await prefs.setInt('accentColor', color.toARGB32());
     notifyListeners();
   }
 

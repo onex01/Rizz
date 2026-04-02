@@ -1,4 +1,4 @@
-package com.duality_project.chatix
+package com.dualproj.rizz
 
 import io.flutter.embedding.android.FlutterActivity
 

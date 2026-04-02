@@ -1,8 +1,12 @@
 import 'dart:io';
-import 'package:ChatiX/services/cache_service.dart';
-import 'package:flutter/cupertino.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:audioplayers/audioplayers.dart';
+import '../services/cache_service.dart';
 import 'package:video_player/video_player.dart';
+
+
 
 class MessageBubble extends StatelessWidget {
   final Map<String, dynamic> msgData;
@@ -67,6 +71,7 @@ class MessageBubble extends StatelessWidget {
     }
 
     if (messageType == 'video_circle') return _buildCircleVideoMessage();
+    if (messageType == 'voice') return _buildVoiceMessage();
 
     return _buildTextMessage();
   }
@@ -74,53 +79,53 @@ class MessageBubble extends StatelessWidget {
   List<Widget> _buildContextMenuActions() {
     return [
       CupertinoContextMenuAction(
-        child: const Text('Ответить'),
         trailingIcon: Icons.reply,
         onPressed: onReply,
+        child: const Text('Ответить'),
       ),
       if (messageType == 'text') ...[
         CupertinoContextMenuAction(
-          child: const Text('Копировать'),
           trailingIcon: Icons.copy,
           onPressed: onCopy,
+          child: const Text('Копировать'),
         ),
         if (isMe)
           CupertinoContextMenuAction(
-            child: const Text('Изменить'),
             trailingIcon: Icons.edit,
             onPressed: onEdit,
+            child: const Text('Изменить'),
           ),
       ],
       if (messageType == 'image_hex')
         CupertinoContextMenuAction(
-          child: const Text('Сохранить в галерею'),
           trailingIcon: Icons.save_alt,
           onPressed: () {
             // TODO: Реализовать сохранение в галерею
           },
+          child: const Text('Сохранить в галерею'),
         ),
       if (messageType == 'file_hex')
         CupertinoContextMenuAction(
-          child: const Text('Скачать файл'),
           trailingIcon: Icons.download,
           onPressed: () => onDownloadFile(msgData),
+          child: const Text('Скачать файл'),
         ),
       CupertinoContextMenuAction(
-        child: const Text('Переслать'),
         trailingIcon: Icons.forward,
         onPressed: onForward,
+        child: const Text('Переслать'),
       ),
       CupertinoContextMenuAction(
-        child: const Text('Удалить у меня'),
         trailingIcon: Icons.delete_outline,
         onPressed: onDeleteMe,
+        child: const Text('Удалить у меня'),
       ),
       if (isMe)
         CupertinoContextMenuAction(
           isDestructiveAction: true,
-          child: const Text('Удалить у всех'),
           trailingIcon: Icons.delete_forever,
           onPressed: onDeleteAll,
+          child: const Text('Удалить у всех'),
         ),
     ];
   }
@@ -158,7 +163,7 @@ class MessageBubble extends StatelessWidget {
                 margin: const EdgeInsets.only(bottom: 6),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isMe ? Colors.white.withOpacity(0.25) : Colors.black.withOpacity(0.15),
+                  color: isMe ? Colors.white.withValues(alpha: 0.25) : Colors.black.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -391,6 +396,18 @@ class MessageBubble extends StatelessWidget {
       },
     );
   }
+
+  // ====================== Голосовые сообщения ======================
+  Widget _buildVoiceMessage() {
+    return FutureBuilder<File?>(
+      future: MessageFileCache().getOrConvert(messageId, msgData),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const CircularProgressIndicator();
+        final file = snapshot.data!;
+        return _VoicePlayerWidget(file: file, isMe: isMe, time: time, fontSize: fontSize);
+      },
+    );
+  }
 }
 
 // ====================== ОТДЕЛЬНЫЙ STATEFUL WIDGET ДЛЯ КРУЖКА (главный фикс OOM) ======================
@@ -461,8 +478,8 @@ class _CircleVideoPlayerWidgetState extends State<_CircleVideoPlayerWidget> {
             child: FittedBox(
               fit: BoxFit.cover,
               child: SizedBox(
-                width: _controller.value.size?.width ?? 180,
-                height: _controller.value.size?.height ?? 180,
+                // width: _controller.value.size.width ?? 180,
+                // height: _controller.value.size.height ?? 180,
                 child: VideoPlayer(_controller),
               ),
             ),
@@ -538,3 +555,75 @@ class _FullScreenCircleVideoState extends State<_FullScreenCircleVideo> {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }// Полноэкранный просмотр кружка
+
+  class _VoicePlayerWidget extends StatefulWidget {
+  final File file;
+  final bool isMe;
+  final String time;
+  final double fontSize;
+  const _VoicePlayerWidget({required this.file, required this.isMe, required this.time, required this.fontSize});
+
+  @override
+  State<_VoicePlayerWidget> createState() => _VoicePlayerWidgetState();
+}
+
+
+class _VoicePlayerWidgetState extends State<_VoicePlayerWidget> {
+  late AudioPlayer _player;
+  bool _isPlaying = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = AudioPlayer();
+    _player.onDurationChanged.listen((d) => setState(() => _duration = d));
+    _player.onPositionChanged.listen((p) => setState(() => _position = p));
+    _player.onPlayerComplete.listen((_) => setState(() => _isPlaying = false));
+    _loadFile();
+  }
+
+  Future<void> _loadFile() async {
+    await _player.setSourceDeviceFile(widget.file.path);
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        decoration: BoxDecoration(
+          color: widget.isMe ? Colors.blue : Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+              onPressed: () {
+                setState(() => _isPlaying = !_isPlaying);
+                _isPlaying ? _player.resume() : _player.pause();
+              },
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')} / ${_duration.inMinutes}:${(_duration.inSeconds % 60).toString().padLeft(2, '0')}',
+              style: TextStyle(fontSize: widget.fontSize - 2),
+            ),
+            const SizedBox(width: 8),
+            Text(widget.time, style: TextStyle(fontSize: widget.fontSize - 4, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
+  }
+}

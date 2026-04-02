@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'package:ChatiX/providers/settings_provider.dart';
-import 'package:ChatiX/widgets/message_bubble.dart';
+import '../providers/settings_provider.dart';
+import '../widgets/message_bubble.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -58,75 +58,75 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
   ) {
     return [
       CupertinoContextMenuAction(
-        child: const Text('Ответить'),
         trailingIcon: Icons.reply,
         onPressed: () {
           Navigator.pop(context);
           widget.onReply(messageId, text);
         },
+        child: const Text('Ответить'),
       ),
       if (type == 'text') ...[
         CupertinoContextMenuAction(
-          child: const Text('Копировать'),
           trailingIcon: Icons.copy,
           onPressed: () {
             Navigator.pop(context);
             widget.onCopy(text);
           },
+          child: const Text('Копировать'),
         ),
         if (isMe)
           CupertinoContextMenuAction(
-            child: const Text('Изменить'),
             trailingIcon: Icons.edit,
             onPressed: () {
               Navigator.pop(context);
               widget.onEdit(messageId, text);
             },
+            child: const Text('Изменить'),
           ),
       ],
       if (type == 'image_hex')
         CupertinoContextMenuAction(
-          child: const Text('Сохранить в галерею'),
           trailingIcon: Icons.save_alt,
           onPressed: () {
             Navigator.pop(context);
             Fluttertoast.showToast(msg: 'Сохранение изображения... (TODO)');
           },
+          child: const Text('Сохранить в галерею'),
         ),
       if (type == 'file_hex')
         CupertinoContextMenuAction(
-          child: const Text('Скачать файл'),
           trailingIcon: Icons.download,
           onPressed: () {
             Navigator.pop(context);
             _downloadFile(msgData);
           },
+          child: const Text('Скачать файл'),
         ),
       CupertinoContextMenuAction(
-        child: const Text('Удалить у меня'),
         trailingIcon: Icons.delete_outline,
         onPressed: () {
           Navigator.pop(context);
           widget.onDeleteMe(messageId);
         },
+        child: const Text('Удалить у меня'),
       ),
       if (isMe)
         CupertinoContextMenuAction(
           isDestructiveAction: true,
-          child: const Text('Удалить у всех'),
           trailingIcon: Icons.delete_forever,
           onPressed: () {
             Navigator.pop(context);
             widget.onDeleteAll(messageId);
           },
+          child: const Text('Удалить у всех'),
         ),
       CupertinoContextMenuAction(
-        child: const Text('Переслать'),
         trailingIcon: Icons.forward,
         onPressed: () {
           Navigator.pop(context);
           widget.onForward();
         },
+        child: const Text('Переслать'),
       ),
     ];
   }

@@ -185,7 +185,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           decoration: BoxDecoration(
-                            color: (_isOnline == true ? Colors.green : Colors.grey).withOpacity(0.1),
+                            color: (_isOnline == true ? Colors.green : Colors.grey).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Row(

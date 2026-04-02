@@ -10,6 +10,7 @@ import '../services/cache_service.dart';
 import '../services/update_service.dart';
 import '../version.dart';
 import 'edit_profile_screen.dart';
+import '../screens/log_viewer_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -22,13 +23,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final currentUser = FirebaseAuth.instance.currentUser!;
   String _appVersion = AppVersion.version;
   String _buildNumber = AppVersion.buildNumber.toString();
-  
+
   @override
   void initState() {
     super.initState();
     _getAppVersion();
   }
-  
+
   Future<void> _getAppVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
     setState(() {
@@ -36,7 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _buildNumber = packageInfo.buildNumber;
     });
   }
-  
+
   Future<void> _checkForUpdates() async {
     final updateInfo = await UpdateService.checkForUpdates();
     if (updateInfo != null && mounted) {
@@ -47,13 +48,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final settingsProvider = Provider.of<SettingsProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
-    
+
     return Scaffold(
       backgroundColor: isLight ? Colors.grey.shade50 : const Color(0xFF0F0F0F),
       body: CustomScrollView(
@@ -71,33 +72,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SliverToBoxAdapter(
             child: Column(
               children: [
-                // Профиль
                 _buildProfileSection(isLight),
                 const Divider(height: 1),
-                
-                // Внешний вид
                 _buildAppearanceSection(settingsProvider, themeProvider, isLight),
                 const Divider(height: 1),
-                
-                // Чаты
                 _buildChatSection(isLight),
                 const Divider(height: 1),
-                
-                // Кэш
                 _buildCacheSection(isLight),
                 const Divider(height: 1),
-                
-                // Обновления
                 _buildUpdateSection(isLight),
                 const Divider(height: 1),
-                
-                // О приложении
                 _buildAboutSection(isLight),
                 const Divider(height: 1),
-                
-                // Выход
                 _buildLogoutSection(isLight),
-                
                 const SizedBox(height: 30),
               ],
             ),
@@ -106,7 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   Widget _buildProfileSection(bool isLight) {
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get(),
@@ -114,7 +101,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final data = snapshot.data?.data() as Map<String, dynamic>?;
         final nickname = data?['nickname'] ?? currentUser.email?.split('@')[0];
         final photoUrl = data?['photoUrl'];
-        
         return ListTile(
           leading: CircleAvatar(
             radius: 30,
@@ -145,7 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
   }
-  
+
   Widget _buildAppearanceSection(SettingsProvider settings, ThemeProvider theme, bool isLight) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,10 +190,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showWallpaperPicker(settings),
         ),
+        ListTile(
+          leading: Icon(Icons.format_color_fill, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
+          title: Text('Цвет фона чата', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
+          trailing: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: settings.chatBackgroundColor ?? (isLight ? Colors.white : Colors.black),
+              shape: BoxShape.circle,
+              border: Border.all(color: isLight ? Colors.grey.shade400 : Colors.grey.shade600),
+            ),
+          ),
+          onTap: () => _showChatBackgroundColorPicker(settings, isLight),
+        ),
       ],
     );
   }
-  
+
   Widget _buildChatSection(bool isLight) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +236,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
-   
+
+  Widget _buildCacheSection(bool isLight) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            'Кэш',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: isLight ? Colors.grey.shade700 : Colors.grey.shade400,
+            ),
+          ),
+        ),
+        ListTile(
+          leading: Icon(Icons.storage, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
+          title: Text('Кэш сообщений', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
+          subtitle: Text(
+            '${MessageFileCache().size} файлов в памяти',
+            style: TextStyle(color: isLight ? Colors.grey.shade600 : Colors.grey.shade500),
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showCacheOptions(),
+        ),
+      ],
+    );
+  }
+
   Widget _buildUpdateSection(bool isLight) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -262,7 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ],
     );
   }
-  
+
   Widget _buildAboutSection(bool isLight) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,11 +313,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           subtitle: Text('$_appVersion ($_buildNumber)', style: TextStyle(color: isLight ? Colors.grey.shade600 : Colors.grey.shade500)),
           onTap: () => _showAboutDialog(),
         ),
+        // Добавленный пункт "Логи приложения"
+        ListTile(
+          leading: Icon(Icons.bug_report, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
+          title: Text('Логи приложения', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => LogViewerScreen()),
+            );
+          },
+        ),
         AboutSection(isLight: isLight),
       ],
     );
   }
-  
+
   Widget _buildLogoutSection(bool isLight) {
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -308,7 +349,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   void _showThemePicker(ThemeProvider theme) {
     showModalBottomSheet(
       context: context,
@@ -353,19 +394,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   void _showColorPicker(SettingsProvider settings) {
     final colors = [
-      Colors.blue, Colors.green, Colors.red, 
+      Colors.blue, Colors.green, Colors.red,
       Colors.purple, Colors.orange, Colors.teal,
       Colors.pink, Colors.indigo
     ];
     final colorNames = [
-      'Синий', 'Зелёный', 'Красный', 
+      'Синий', 'Зелёный', 'Красный',
       'Фиолетовый', 'Оранжевый', 'Бирюзовый',
       'Розовый', 'Индиго'
     ];
-    
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -379,8 +419,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               radius: 16,
             ),
             title: Text(colorNames[index]),
-            trailing: settings.accentColor == colors[index] 
-                ? const Icon(Icons.check, color: Colors.blue) 
+            trailing: settings.accentColor == colors[index]
+                ? const Icon(Icons.check, color: Colors.blue)
                 : null,
             onTap: () {
               settings.setAccentColor(colors[index]);
@@ -391,10 +431,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
+  void _showChatBackgroundColorPicker(SettingsProvider settings, bool isLight) {
+    final colors = [
+      Colors.white,
+      Colors.black,
+      Colors.grey.shade200,
+      Colors.blue.shade50,
+      Colors.green.shade50,
+      Colors.red.shade50,
+    ];
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Wrap(
+        children: colors.map((color) {
+          return ListTile(
+            leading: CircleAvatar(backgroundColor: color),
+            title: Text(_getColorName(color)),
+            trailing: settings.chatBackgroundColor == color
+                ? const Icon(Icons.check, color: Colors.blue)
+                : null,
+            onTap: () {
+              settings.setChatBackgroundColor(color);
+              Navigator.pop(context);
+            },
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   void _showFontSizePicker(SettingsProvider settings) {
     double tempSize = settings.fontSize;
-    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -441,7 +512,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   void _showWallpaperPicker(SettingsProvider settings) {
     showModalBottomSheet(
       context: context,
@@ -455,6 +526,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Выбрать из галереи'),
             onTap: () {
               Navigator.pop(context);
+              // TODO: реализовать выбор обоев
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Выбор обоев из галереи в разработке')),
               );
@@ -465,6 +537,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Цвет фона'),
             onTap: () {
               Navigator.pop(context);
+              // TODO: выбор цвета обоев
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Выбор цвета в разработке')),
               );
@@ -484,35 +557,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
         ],
       ),
-    );
-  }
-  
-    Widget _buildCacheSection(bool isLight) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            'Кэш',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: isLight ? Colors.grey.shade700 : Colors.grey.shade400,
-            ),
-          ),
-        ),
-        ListTile(
-          leading: Icon(Icons.storage, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
-          title: Text('Кэш сообщений', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
-          subtitle: Text(
-            '${MessageFileCache().size} файлов в памяти',
-            style: TextStyle(color: isLight ? Colors.grey.shade600 : Colors.grey.shade500),
-          ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showCacheOptions(),
-        ),
-      ],
     );
   }
 
@@ -539,7 +583,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Кэш сообщений очищен')),
                 );
-                setState(() {}); // обновляем FutureBuilder / ListTile
+                setState(() {});
               }
             },
             style: ElevatedButton.styleFrom(
@@ -552,12 +596,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   void _showAboutDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('ChatiX'),
+        title: const Text('Rizz'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -578,7 +622,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -607,15 +651,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  
+
   String _getThemeModeName(ThemeMode mode) {
     switch (mode) {
       case ThemeMode.light: return 'Светлая';
       case ThemeMode.dark: return 'Тёмная';
       case ThemeMode.system: return 'Системная';
-      }
+    }
   }
-  
+
   String _getColorName(Color color) {
     if (color == Colors.blue) return 'Синий';
     if (color == Colors.green) return 'Зелёный';
@@ -625,14 +669,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (color == Colors.teal) return 'Бирюзовый';
     if (color == Colors.pink) return 'Розовый';
     if (color == Colors.indigo) return 'Индиго';
+    if (color == Colors.white) return 'Белый';
+    if (color == Colors.black) return 'Чёрный';
     return 'Кастомный';
   }
 }
 
-// Отдельный виджет для информации о приложении
 class AboutSection extends StatelessWidget {
   final bool isLight;
-  
   const AboutSection({super.key, required this.isLight});
 
   @override
@@ -648,11 +692,12 @@ class AboutSection extends StatelessWidget {
         ),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const Icon(Icons.chat_bubble_outline, size: 48, color: Colors.blue),
           const SizedBox(height: 12),
           Text(
-            'ChatiX',
+            'Rizz',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -662,6 +707,7 @@ class AboutSection extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'Мессенджер с открытым исходным кодом',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
               color: isLight ? Colors.grey.shade600 : Colors.grey.shade400,
@@ -670,6 +716,7 @@ class AboutSection extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             'Сделано командой © 2026 Duality Project',
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
               color: isLight ? Colors.grey.shade500 : Colors.grey.shade500,

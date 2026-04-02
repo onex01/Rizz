@@ -1,9 +1,9 @@
-import 'package:ChatiX/screens/user_profile_screen.dart';
-import 'package:ChatiX/services/user_cache_service.dart';
+import '../screens/user_profile_screen.dart';
+import '../services/user_cache_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:ChatiX/screens/chat_screen.dart';
+import '../screens/chat_screen.dart';
 
 class ChatList extends StatefulWidget {
   final String currentUserId;
@@ -133,7 +133,7 @@ class _ChatListState extends State<ChatList> {
                     scale: scale,
                     child: Material(
                       elevation: 12 * animation.value,
-                      shadowColor: Colors.black.withOpacity(0.25),
+                      shadowColor: Colors.black.withValues(alpha: 0.25),
                       borderRadius: BorderRadius.circular(12),
                       color: Colors.transparent,
                       child: ListTile(

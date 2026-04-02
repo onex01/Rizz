@@ -125,18 +125,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
                         color: isLight
-                            ? Colors.white.withOpacity(0.75)
-                            : Colors.black.withOpacity(0.7),
+                            ? Colors.white.withValues(alpha: 0.75)
+                            : Colors.black.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(25),
                         border: Border.all(
                           color: isLight
-                              ? Colors.black.withOpacity(0.08)
-                              : Colors.white.withOpacity(0.12),
+                              ? Colors.black.withValues(alpha: 0.08)
+                              : Colors.white.withValues(alpha: 0.12),
                           width: 0.8,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 15,
                             offset: const Offset(0, 5),
                           ),
@@ -211,7 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isSelected
-                  ? (isLight ? Colors.blue.withOpacity(0.15) : Colors.blue.withOpacity(0.25))
+                  ? (isLight ? Colors.blue.withValues(alpha: 0.15) : Colors.blue.withValues(alpha: 0.25))
                   : Colors.transparent,
               shape: BoxShape.circle,
             ),
@@ -249,8 +249,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           decoration: BoxDecoration(
             color: isLight
-                ? Colors.white.withOpacity(0.96)
-                : const Color(0xFF0F0F0F).withOpacity(0.96),
+                ? Colors.white.withValues(alpha: 0.96)
+                : const Color(0xFF0F0F0F).withValues(alpha: 0.96),
             border: Border(
               bottom: BorderSide(
                 color: isLight ? Colors.grey.shade200 : Colors.grey.shade800,

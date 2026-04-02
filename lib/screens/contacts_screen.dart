@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'chat_screen.dart';
+import 'user_profile_screen.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -25,26 +26,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Future<void> _loadFriends() async {
     setState(() => _isLoading = true);
-    
     try {
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(currentUser.uid)
           .get();
-      
       if (userDoc.exists) {
         final data = userDoc.data()!;
         final friendIds = List<String>.from(data['friends'] ?? []);
-        
         if (friendIds.isNotEmpty) {
-          // Загружаем данные друзей
           final friendsData = await Future.wait(
             friendIds.map((id) async {
               final friendDoc = await FirebaseFirestore.instance
                   .collection('users')
                   .doc(id)
                   .get();
-              
               if (friendDoc.exists) {
                 final friendData = friendDoc.data()!;
                 return {
@@ -58,7 +54,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
               return null;
             }),
           );
-          
           setState(() {
             _friends = friendsData.whereType<Map<String, dynamic>>().toList();
             _isLoading = false;
@@ -76,10 +71,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _startChat(String userId, String nickname) async {
     final chatId = [currentUser.uid, userId]..sort();
     final chatDocId = '${chatId[0]}_${chatId[1]}';
-    
     final chatRef = FirebaseFirestore.instance.collection('chats').doc(chatDocId);
     final chatDoc = await chatRef.get();
-    
     if (!chatDoc.exists) {
       await chatRef.set({
         'participants': [currentUser.uid, userId],
@@ -88,7 +81,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
     }
-    
     if (mounted) {
       Navigator.push(
         context,
@@ -105,15 +97,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
   String _getLastSeenText(DateTime? lastSeen, bool isOnline) {
     if (isOnline) return 'В сети';
     if (lastSeen == null) return 'Был(а) недавно';
-    
     final now = DateTime.now();
     final difference = now.difference(lastSeen);
-    
     if (difference.inMinutes < 5) return 'Был(а) только что';
     if (difference.inHours < 1) return 'Был(а) ${difference.inMinutes} мин назад';
     if (difference.inDays < 1) return 'Был(а) ${difference.inHours} ч назад';
     if (difference.inDays < 7) return 'Был(а) ${difference.inDays} дн назад';
-    
     return 'Был(а) ${lastSeen.day}.${lastSeen.month}.${lastSeen.year}';
   }
 
@@ -169,7 +158,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   itemBuilder: (context, index) {
                     final friend = _friends[index];
                     final isOnline = friend['isOnline'] ?? false;
-                    
                     return Card(
                       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       elevation: 0,
@@ -222,18 +210,28 @@ class _ContactsScreenState extends State<ContactsScreen> {
                             color: isOnline ? Colors.green : (isLight ? Colors.grey.shade600 : Colors.grey.shade500),
                           ),
                         ),
-                        trailing: ElevatedButton(
-                          onPressed: () => _startChat(friend['uid'], friend['nickname']),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            minimumSize: const Size(80, 36),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.person_outline, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => UserProfileScreen(userId: friend['uid'])),
+                                );
+                              },
+                              tooltip: 'Профиль',
                             ),
-                          ),
-                          child: const Text('Написать'),
-                        ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: Icon(Icons.message, color: Colors.blue),
+                              onPressed: () => _startChat(friend['uid'], friend['nickname']),
+                              tooltip: 'Написать',
+                            ),
+                          ],
+                        )
+                        
                       ),
                     );
                   },

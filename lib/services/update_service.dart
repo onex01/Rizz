@@ -7,12 +7,12 @@ import 'package:open_file/open_file.dart';
 import '../version.dart';
 
 class UpdateService {
-  static const String BASE_URL = 'https://uploads.onex01.ru/Android/APKs/ChatiX';
+  static const String baseUrl = 'https://uploads.onex01.ru/Android/APKs/Rizz';
   
   static Future<Map<String, dynamic>?> checkForUpdates() async {
     try {
       final response = await http.get(
-        Uri.parse('$BASE_URL/version.json'),
+        Uri.parse('$baseUrl/version.json'),
         headers: {'Cache-Control': 'no-cache'},
       ).timeout(const Duration(seconds: 10));
       
@@ -80,7 +80,7 @@ class UpdateService {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
+                  color: Colors.blue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -114,7 +114,7 @@ class UpdateService {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.1),
+                  color: Colors.amber.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Row(
@@ -195,7 +195,7 @@ class UpdateService {
     try {
       // Загружаем файл
       final directory = await getExternalStorageDirectory();
-      final filePath = '${directory!.path}/ChatiX_update.apk';
+      final filePath = '${directory!.path}/Rizz_update.apk';
       final file = File(filePath);
       
       final response = await http.get(Uri.parse(downloadUrl));

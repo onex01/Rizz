@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set PROJECT_DIR=C:\ChatiX\ChatiX
+set PROJECT_DIR=C:\Rizz\
 set BACKUP_DIR=%PROJECT_DIR%\.backup
 
 cd /d %PROJECT_DIR%

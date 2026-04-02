@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
   
 class FileConverterService {
   // Максимальный размер файла для hex конвертации (500 КБ)
@@ -53,9 +54,22 @@ class FileConverterService {
   
   /// Получает размер файла в удобном формате
   static Future<String> getFileSizeString(File file) async {
-    final size = await file.length();
-    if (size < 1024) return '$size B';
-    if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
-    return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+      final size = await file.length();
+      if (size < 1024) return '$size B';
+      if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
+      return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+
+    static Future<File> assembleFromChunks(List<String> chunkIds, String fileName) async {
+    List<int> allBytes = [];
+    for (String id in chunkIds) {
+      final doc = await FirebaseFirestore.instance.collection('chunks').doc(id).get();
+      final hex = doc['hex'] as String;
+      allBytes.addAll(_hexToBytes(hex));
+    }
+    final tempDir = Directory.systemTemp;
+    final file = File('${tempDir.path}/$fileName');
+    await file.writeAsBytes(allBytes);
+    return file;
   }
 }

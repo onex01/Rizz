@@ -64,8 +64,8 @@ class NotificationService {
         notification.body ?? '',
         const NotificationDetails(
           android: AndroidNotificationDetails(
-            'chatix_channel',
-            'ChatiX Уведомления',
+            'rizz_channel',
+            'Rizz Уведомления',
             importance: Importance.high,
             priority: Priority.high,
           ),

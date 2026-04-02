@@ -1,4 +1,4 @@
-# ChatiX
+# Rizz
 
 A messenger running on Google Firebase
 

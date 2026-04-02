@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:permission_handler/permission_handler.dart';
+// import 'user_media_screen.dart';
 import 'dart:io';
 
 import 'edit_profile_screen.dart';
@@ -48,7 +49,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _photoUrl = data['photoUrl'];
         // Проверяем существование поля phoneNumber
         _phoneNumber = data.containsKey('phoneNumber') ? data['phoneNumber'] : null;
-        _bio = data['bio'] ?? 'Привет! Я использую ChatiX';
+        _bio = data['bio'] ?? 'Привет! Я использую Rizz';
         _isLoading = false;
       });
     } else {
@@ -117,7 +118,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final foundCount = usersQuery.docs.length;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Найдено $foundCount друзей в ChatiX!'),
+            content: Text('Найдено $foundCount друзей в Rizz!'),
             action: SnackBarAction(
               label: 'Показать',
               onPressed: () {
@@ -297,7 +298,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
+                      color: Colors.green.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Row(
@@ -374,6 +375,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   
                   const SizedBox(height: 80),
+
+
+                  // const SizedBox(height: 24),
+                  // ListTile(
+                  //   leading: Icon(Icons.photo_library, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
+                  //   title: Text('Медиа', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
+                  //   trailing: const Icon(Icons.chevron_right),
+                  //   onTap: () {
+                  //     Navigator.push(context, MaterialPageRoute(builder: (_) => UserMediaScreen(userId: user.uid)));
+                  //   },
+                  // ),
                 ],
               ),
             ),
