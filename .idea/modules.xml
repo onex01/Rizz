@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/chatix.iml" filepath="$PROJECT_DIR$/chatix.iml" />
-      <module fileurl="file://$PROJECT_DIR$/android/chatix_android.iml" filepath="$PROJECT_DIR$/android/chatix_android.iml" />
+      <module fileurl="file://$PROJECT_DIR$/rizz.iml" filepath="$PROJECT_DIR$/rizz.iml" />
+      <module fileurl="file://$PROJECT_DIR$/android/rizz_android.iml" filepath="$PROJECT_DIR$/android/rizz_android.iml" />
     </modules>
   </component>
 </project>

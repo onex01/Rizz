@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:931475441186:android:cbc3e1707430bbaeb3ec7b",
         "android_client_info": {
-          "package_name": "com.dualproj.rizz"
+          "package_name": "com.duality_project.chatix"
         }
       },
       "oauth_client": [
@@ -17,7 +17,7 @@
           "client_id": "931475441186-m9khuao5ogbni8ne5vjulg8fqin7l2o8.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.dualproj.rizz",
+            "package_name": "com.duality_project.chatix",
             "certificate_hash": "0aac7ce396f50e752c98d18563c44e89bcbeb0f6"
           }
         },
@@ -25,7 +25,7 @@
           "client_id": "931475441186-r9ombml1dfp788b93c1anvd9u933r8jn.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.dualproj.rizz",
+            "package_name": "com.duality_project.chatix",
             "certificate_hash": "869351bdd4cf720cdee7ce9a4dc1cdae79ac8e2c"
           }
         },
@@ -45,6 +45,13 @@
             {
               "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "931475441186-r7cbglk57h17l9ngqg9mbqeg4k9sd1dd.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.chatix"
+              }
             }
           ]
         }
@@ -59,36 +66,15 @@
       },
       "oauth_client": [
         {
-          "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
+          "client_id": "931475441186-h22j6aosih44ubv1ht589mfb3mnsfjnb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dualproj.rizz",
+            "certificate_hash": "a4770d052d4d8b75748a0bc47904aab533467401"
+          }
+        },
         {
-          "current_key": "AIzaSyA3J371D1d7Pufm25nQYpjsGyArvk_pmiI"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:931475441186:android:e178ac4ac954ef46b3ec7b",
-        "android_client_info": {
-          "package_name": "com.dualproj.rizz"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "931475441186-rtiu9pnt3f115lc64na8ek0o9qubr5r2.apps.googleusercontent.com",
+          "client_id": "931475441186-nalpsc3a7s3scc0fo7cm2mv3jfvse9u1.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.dualproj.rizz",
@@ -111,6 +97,13 @@
             {
               "client_id": "931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "931475441186-r7cbglk57h17l9ngqg9mbqeg4k9sd1dd.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.chatix"
+              }
             }
           ]
         }

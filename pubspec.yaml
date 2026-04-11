@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.1.40+40
+version: 0.1.41+41
 
 environment:
   sdk: ^3.11.3
@@ -31,46 +31,58 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Firebase
   firebase_core: ^4.6.0
   firebase_auth: ^6.3.0
   cloud_firestore: ^6.2.0
   firebase_storage: ^13.2.0
   firebase_messaging: ^16.1.0
 
+  # State & DI
   provider: ^6.1.2
-  uuid: ^4.5.0
+  get_it: ^8.0.3
+
+  # Platform & Utils
+  flutter_contacts: ^1.1.7+1
+  flutter_cache_manager: ^3.3.1
+  flutter_downloader: ^1.11.7
+  device_info_plus: ^10.1.2
+  shared_preferences: ^2.3.2
+  path_provider: ^2.1.4
+  permission_handler: ^11.3.1
+  cupertino_icons: ^1.0.8
+  hive_flutter: ^1.1.0
+  share_plus: ^12.0.2
+  timeago: ^3.7.0
+  open_file: ^3.5.10
+  logger: ^1.4.0
+  http: ^1.2.2
+  package_info_plus: ^8.1.1
+  hive: ^2.2.3
   intl: ^0.19.0
-  cached_network_image: ^3.4.0
+  path: ^1.9.0
+  uuid: ^4.5.0
+  web: ^1.0.0
+
+  # UI & Media
+  cached_network_image: ^3.4.1
+  image_picker: ^1.1.2
+  file_picker: ^8.1.4
+  camera: ^0.11.0+2
+  video_player: ^2.9.2
+  audioplayers: ^6.1.0
+  record: ^6.2.0
   fluttertoast: ^9.0.0
   email_validator: ^3.0.0
-  timeago: ^3.7.0
-  google_sign_in: ^6.2.1
+  google_sign_in: ^6.2.2
   google_sign_in_web: ^0.12.4+4
-  web: ^1.0.0
-  image_picker: ^1.1.2
-  path_provider: ^2.1.4
-  cupertino_icons: ^1.0.8
-  flutter_cache_manager: ^3.3.1
-  shared_preferences: ^2.3.2
-  permission_handler: ^11.3.1
-  flutter_contacts: ^1.1.7+1
-  flutter_local_notifications: ^17.2.1
-  http: ^1.2.0
-  open_file: ^3.3.2
-  package_info_plus: ^8.0.0
-  file_picker: ^8.0.0
-  camera: ^0.10.6
-  video_player: ^2.8.1
-  record: ^6.2.0
-  audioplayers: ^5.2.0  
-  record_platform_interface: ^1.5.0
-  hive: ^2.2.3
-  hive_flutter: ^1.1.0
-  logger: ^1.4.0
-  share_plus: ^12.0.2
-  flutter_downloader: ^1.11.7
-  
-  path: any
+
+  # Notifications
+  flutter_local_notifications: ^18.0.1
+  local_notifier: ^0.1.6        # для Windows/macOS/Linux
+
+  # Desktop integration (опционально)
+  window_manager: ^0.4.3
 
 dependency_overrides:
   record_platform_interface: ^1.5.0

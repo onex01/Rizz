@@ -5,18 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "chatix",
+            "name": "rizz",
             "request": "launch",
             "type": "dart"
         },
         {
-            "name": "chatix (profile mode)",
+            "name": "rizz (profile mode)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "profile"
         },
         {
-            "name": "chatix (release mode)",
+            "name": "rizz (release mode)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"
