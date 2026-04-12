@@ -14,7 +14,6 @@ class ThemeProvider extends ChangeNotifier {
   Future<void> _loadThemeFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString(_themeKey);
-
     if (savedTheme != null) {
       switch (savedTheme) {
         case 'light':
@@ -34,7 +33,6 @@ class ThemeProvider extends ChangeNotifier {
   Future<void> setTheme(ThemeMode mode) async {
     if (_themeMode == mode) return;
     _themeMode = mode;
-
     final prefs = await SharedPreferences.getInstance();
     String themeString;
     switch (mode) {
@@ -52,11 +50,8 @@ class ThemeProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Стандартные темы
   ThemeData get lightTheme => ThemeData.light().copyWith(
-        colorScheme: const ColorScheme.light().copyWith(
-          primary: Colors.blue,
-        ),
+        colorScheme: const ColorScheme.light().copyWith(primary: Colors.blue),
         scaffoldBackgroundColor: Colors.white,
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
@@ -66,9 +61,7 @@ class ThemeProvider extends ChangeNotifier {
       );
 
   ThemeData get darkTheme => ThemeData.dark().copyWith(
-        colorScheme: const ColorScheme.dark().copyWith(
-          primary: Colors.blue,
-        ),
+        colorScheme: const ColorScheme.dark().copyWith(primary: Colors.blue),
         scaffoldBackgroundColor: const Color(0xFF0F0F0F),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF0F0F0F),

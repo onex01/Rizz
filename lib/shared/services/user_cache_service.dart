@@ -4,65 +4,56 @@ import 'file_converter_service.dart';
 
 class UserCacheService {
   static const String _nicknamePrefix = 'user_nickname_';
+  static const String _usernamePrefix = 'user_username_';
   static const String _photoPrefix = 'user_photo_';
   static const String _avatarHexPrefix = 'avatar_hex_';
-  static const String _avatarTimestampPrefix = 'avatar_ts_';
 
-  Future<void> cacheUser(String uid, String? nickname, String? photoUrl) async {
+  Future<void> cacheUser(String uid, String? nickname, String? photoUrl, [String? username]) async {
     final prefs = await SharedPreferences.getInstance();
     if (nickname != null) await prefs.setString('$_nicknamePrefix$uid', nickname);
+    if (username != null) await prefs.setString('$_usernamePrefix$uid', username);
     if (photoUrl != null) await prefs.setString('$_photoPrefix$uid', photoUrl);
   }
 
-  Future<void> cacheAvatarHex(String uid, String hexData) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_avatarHexPrefix$uid', hexData);
-    await prefs.setInt('$_avatarTimestampPrefix$uid', DateTime.now().millisecondsSinceEpoch);
-    final file = await FileConverterService.hexToFile(hexData, 'avatar_$uid.jpg');
-    final tempDir = Directory.systemTemp;
-    final savedFile = File('${tempDir.path}/avatar_$uid.jpg');
-    await file.copy(savedFile.path);
-  }
-
-  Future<File?> getAvatarFile(String uid) async {
-    final prefs = await SharedPreferences.getInstance();
-    final hex = prefs.getString('$_avatarHexPrefix$uid');
-    if (hex != null) return await FileConverterService.hexToFile(hex, 'avatar_$uid.jpg');
-    return null;
-  }
-
-  Future<bool> isAvatarOutdated(String uid, int serverTimestamp) async {
-    final prefs = await SharedPreferences.getInstance();
-    final cachedTs = prefs.getInt('$_avatarTimestampPrefix$uid') ?? 0;
-    return serverTimestamp > cachedTs;
-  }
-
   String? getNickname(String uid) {
-    try {
-      final prefs = SharedPreferences.getInstance() as SharedPreferences;
-      return prefs.getString('$_nicknamePrefix$uid');
-    } catch (_) {
-      return null;
-    }
+    final prefs = SharedPreferences.getInstance() as SharedPreferences;
+    return prefs.getString('$_nicknamePrefix$uid');
+  }
+
+  String? getUsername(String uid) {
+    final prefs = SharedPreferences.getInstance() as SharedPreferences;
+    return prefs.getString('$_usernamePrefix$uid');
   }
 
   String? getPhotoUrl(String uid) {
-    try {
-      final prefs = SharedPreferences.getInstance() as SharedPreferences;
-      return prefs.getString('$_photoPrefix$uid');
-    } catch (_) {
-      return null;
-    }
+    final prefs = SharedPreferences.getInstance() as SharedPreferences;
+    return prefs.getString('$_photoPrefix$uid');
+  }
+
+  String? getAvatarHex(String uid) {
+    final prefs = SharedPreferences.getInstance() as SharedPreferences;
+    return prefs.getString('$_avatarHexPrefix$uid');
+  }
+
+  Future<File?> getAvatarFile(String uid) async {
+    final hex = getAvatarHex(uid);
+    if (hex == null) return null;
+    return await FileConverterService.hexToFile(hex, 'avatar_$uid.jpg');
   }
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     final keys = prefs.getKeys();
     for (var key in keys) {
-      if (key.startsWith(_nicknamePrefix) || key.startsWith(_photoPrefix) ||
-          key.startsWith(_avatarHexPrefix) || key.startsWith(_avatarTimestampPrefix)) {
+      if (key.startsWith(_nicknamePrefix) || key.startsWith(_avatarHexPrefix)) {
         await prefs.remove(key);
       }
     }
+  }
+
+  Future<void> invalidateUser(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('$_nicknamePrefix$uid');
+    await prefs.remove('$_avatarHexPrefix$uid');
   }
 }

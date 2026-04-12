@@ -4,6 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:get_it/get_it.dart';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_linkify/flutter_linkify.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../shared/services/cache_service.dart';
 
@@ -59,7 +61,7 @@ class MessageBubble extends StatelessWidget {
   Widget _buildMessageContent() {
     if (messageType == 'image_hex') return _buildImageMessage();
     if (messageType == 'file_hex') return _buildFileMessage();
-    if (messageType == 'video_circle') return _buildCircleVideoMessage();
+    // if (messageType == 'video_circle') return _buildCircleVideoMessage();
     if (messageType == 'voice') return _buildVoiceMessage();
     return _buildTextMessage();
   }
@@ -155,9 +157,19 @@ class MessageBubble extends StatelessWidget {
                   ],
                 ),
               ),
-            Text(
-              text,
+            Linkify(
+              text: text,
               style: TextStyle(color: textColor, fontSize: fontSize),
+              linkStyle: TextStyle(
+                color: isMe ? Colors.white : Colors.blue,
+                decoration: TextDecoration.underline,
+              ),
+              onOpen: (link) async {
+                final uri = Uri.tryParse(link.url);
+                if (uri != null && await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
             ),
             if (isEdited)
               Text(
@@ -346,30 +358,30 @@ class MessageBubble extends StatelessWidget {
   }
 
   // ====================== ВИДЕОКРУЖОК (КРУГЛЫЙ + АВТОПРОИГРЫВАНИЕ) ======================
-  Widget _buildCircleVideoMessage() {
-    return FutureBuilder<File?>(
-      future: GetIt.I<MessageFileCache>().getOrConvert(messageId, msgData),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(20),
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        }
+  // Widget _buildCircleVideoMessage() {
+  //   return FutureBuilder<File?>(
+  //     future: GetIt.I<MessageFileCache>().getOrConvert(messageId, msgData),
+  //     builder: (context, snapshot) {
+  //       if (!snapshot.hasData) {
+  //         return const Center(
+  //           child: Padding(
+  //             padding: EdgeInsets.all(20),
+  //             child: CircularProgressIndicator(strokeWidth: 2),
+  //           ),
+  //         );
+  //       }
 
-        final file = snapshot.data!;
+  //       final file = snapshot.data!;
 
-        return _CircleVideoPlayerWidget(
-          file: file,
-          isMe: isMe,
-          time: time,
-          fontSize: fontSize,
-        );
-      },
-    );
-  }
+  //       return _CircleVideoPlayerWidget(
+  //         file: file,
+  //         isMe: isMe,
+  //         time: time,
+  //         fontSize: fontSize,
+  //       );
+  //     },
+  //   );
+  // }
 
   // ====================== Голосовые сообщения ======================
   Widget _buildVoiceMessage() {
@@ -422,7 +434,7 @@ class _CircleVideoPlayerWidgetState extends State<_CircleVideoPlayerWidget> {
 
   @override
   void dispose() {
-    _controller.dispose();   // ← Самое важное для предотвращения OOM
+    _controller.dispose();
     super.dispose();
   }
 

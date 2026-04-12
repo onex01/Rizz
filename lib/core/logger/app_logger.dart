@@ -9,7 +9,6 @@ class AppLogger {
   static const String _logFileName = 'rizz_log.txt';
   final RemoteLogger _remoteLogger;
   File? _logFile;
-  File? getLogFile() => _logFile;
   bool _initialized = false;
 
   AppLogger(this._remoteLogger);
@@ -29,7 +28,6 @@ class AppLogger {
         debugPrint('Logger init error: $e');
       }
     } else {
-      // Веб: не пишем в файл, только консоль и удалённо
       _initialized = true;
       debugPrint('=== Rizz Web Log Started === ${DateTime.now()}');
     }
@@ -44,20 +42,21 @@ class AppLogger {
     }
   }
 
-  Future<void> log(LogLevel level, String message, [Object? error, StackTrace? stack]) async {
+  Future<void> log(LogLevel level, String summary, {String? details}) async {
     final levelStr = level.toString().split('.').last.toUpperCase();
     final timestamp = DateTime.now().toIso8601String();
-    final logEntry = '[$levelStr] $timestamp - $message\n';
+    final logEntry = '[$levelStr] $timestamp - $summary\n';
     debugPrint(logEntry);
     await _write(logEntry);
+    if (details != null && details.isNotEmpty) {
+      await _write('  Details: $details\n');
+    }
 
-    // Отправляем warning и error на сервер
     if (level == LogLevel.error || level == LogLevel.warning) {
       _remoteLogger.sendLog(
         level: levelStr,
-        message: message,
-        error: error?.toString(),
-        stackTrace: stack?.toString(),
+        summary: summary,
+        details: details,
       );
     }
   }
@@ -67,7 +66,16 @@ class AppLogger {
   }
 
   Future<void> info(String message) => log(LogLevel.info, message);
-  Future<void> warning(String message) => log(LogLevel.warning, message);
-  Future<void> error(String message, [Object? error, StackTrace? stack]) =>
-      log(LogLevel.error, message, error, stack);
+
+  Future<void> warning(String message, {String? details}) =>
+      log(LogLevel.warning, message, details: details);
+
+  Future<void> error(String message, {Object? error, StackTrace? stack}) {
+    final details = error != null || stack != null
+        ? 'Exception: $error\nStackTrace: $stack'
+        : null;
+    return log(LogLevel.error, message, details: details);
+  }
+
+  File? getLogFile() => _logFile;
 }

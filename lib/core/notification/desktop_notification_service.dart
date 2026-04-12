@@ -43,6 +43,41 @@ class DesktopNotificationService implements NotificationService {
     await localNotifier.notify(notification);
   }
 
+  @override
+  Future<void> showMessageNotification({
+    required String chatId,
+    required String senderName,
+    required String content,
+    required String messageType,
+    String? senderPhotoUrl,
+  }) async {
+    String body;
+    switch (messageType) {
+      case 'image_hex':
+      case 'image':
+        body = '📷 Фотография';
+        break;
+      case 'file_hex':
+      case 'file':
+        body = '📎 Файл';
+        break;
+      case 'voice':
+        body = '🎤 Голосовое сообщение';
+        break;
+      case 'video_circle':
+      case 'video':
+        body = '🎥 Видео';
+        break;
+      default:
+        body = content.length > 100 ? '${content.substring(0, 100)}…' : content;
+    }
+    final notification = LocalNotification(
+      title: senderName,
+      body: body,
+    );
+    await localNotifier.notify(notification);
+  }
+
   void startListeningForMessages() {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return;
@@ -57,13 +92,15 @@ class DesktopNotificationService implements NotificationService {
           final data = change.doc.data();
           final lastMessageTime = data?['lastMessageTime'] as Timestamp?;
           final lastMessage = data?['lastMessage'] as String?;
+          final lastMessageType = data?['lastMessageType'] as String? ?? 'text';
           if (lastMessage != null && lastMessageTime != null) {
             final lastSeen = await _getLastSeenTime(change.doc.id);
             if (lastMessageTime.toDate().isAfter(lastSeen)) {
-              await showLocalNotification(
-                title: 'Новое сообщение',
-                body: lastMessage,
-                payload: change.doc.id,
+              await showMessageNotification(
+                chatId: change.doc.id,
+                senderName: 'Новое сообщение',
+                content: lastMessage,
+                messageType: lastMessageType,
               );
               _messageController.add({
                 'chatId': change.doc.id,

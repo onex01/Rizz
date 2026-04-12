@@ -5,14 +5,22 @@ class SettingsProvider extends ChangeNotifier {
   String? _wallpaperUrl;
   double _fontSize = 16.0;
   Color _accentColor = Colors.blue;
-  int _cacheSize = 100; // MB
+  int _cacheSize = 100;
   Color? _chatBackgroundColor;
+  bool _showAvatars = true;
+  bool _sendByEnter = false;
+
+  bool _useProceduralBackground = false;
+
+  bool get useProceduralBackground => _useProceduralBackground;
 
   String? get wallpaperUrl => _wallpaperUrl;
   double get fontSize => _fontSize;
   Color get accentColor => _accentColor;
   int get cacheSize => _cacheSize;
   Color? get chatBackgroundColor => _chatBackgroundColor;
+  bool get showAvatars => _showAvatars;
+  bool get sendByEnter => _sendByEnter;
 
   SettingsProvider() {
     _loadSettings();
@@ -24,10 +32,11 @@ class SettingsProvider extends ChangeNotifier {
     _accentColor = Color(prefs.getInt('accentColor') ?? Colors.blue.toARGB32());
     _cacheSize = prefs.getInt('cacheSize') ?? 100;
     _wallpaperUrl = prefs.getString('wallpaperUrl');
-    int? bgColorValue = prefs.getInt('chatBackgroundColor');
-    if (bgColorValue != null) {
-      _chatBackgroundColor = Color(bgColorValue);
-    }
+    _useProceduralBackground = prefs.getBool('useProceduralBackground') ?? false;
+    final bgColorValue = prefs.getInt('chatBackgroundColor');
+    if (bgColorValue != null) _chatBackgroundColor = Color(bgColorValue);
+    _showAvatars = prefs.getBool('showAvatars') ?? true;
+    _sendByEnter = prefs.getBool('sendByEnter') ?? false;
     notifyListeners();
   }
 
@@ -71,6 +80,27 @@ class SettingsProvider extends ChangeNotifier {
     _cacheSize = size;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('cacheSize', size);
+    notifyListeners();
+  }
+
+  Future<void> setShowAvatars(bool value) async {
+    _showAvatars = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('showAvatars', value);
+    notifyListeners();
+  }
+
+  Future<void> setSendByEnter(bool value) async {
+    _sendByEnter = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('sendByEnter', value);
+    notifyListeners();
+  }
+
+  Future<void> setUseProceduralBackground(bool value) async {
+    _useProceduralBackground = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('useProceduralBackground', value);
     notifyListeners();
   }
 }

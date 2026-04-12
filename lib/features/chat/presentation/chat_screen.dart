@@ -17,10 +17,12 @@ import '../../../shared/services/firestore_service.dart';
 import '../../../shared/services/storage_service.dart';
 import '../../../shared/services/circle_video_service.dart';
 import '../../../shared/services/voice_service.dart';
+import '../../../shared/services/chunked_file_service.dart';
 import '../../profile/presentation/user_profile_screen.dart';
 import '../data/chat_repository.dart';
 import '../domain/message.dart';
 import '../widgets/message_list.dart';
+import '../widgets/chat_background.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -43,6 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _storageService = GetIt.I<StorageService>();
   final _platformInfo = GetIt.I<PlatformInfo>();
   final _logger = GetIt.I<AppLogger>();
+  final _chunkedFileService = GetIt.I<ChunkedFileService>();
 
   String? _otherUserNickname;
   String? _otherUserPhotoUrl;
@@ -78,7 +81,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _otherUserPhotoUrl = data['photoUrl'];
       });
     } catch (e, stack) {
-      _logger.error('Failed to load other user info', e, stack);
+      _logger.error('Failed to load other user info', error: e, stack: stack);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) => _markMessagesAsRead());
@@ -142,7 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       await batch.commit();
     } catch (e, stack) {
-      _logger.error('Failed to mark messages as read', e, stack);
+      _logger.error('Failed to mark messages as read', error: e, stack: stack);
     }
   }
 
@@ -221,10 +224,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final fileName = file.path.split('/').last;
       final fileExtension = fileName.split('.').last;
 
-      // Проверка размера (макс 500 КБ для hex)
+      // Проверка размера: если > 500 KB, используем чанки
       if (fileSize > 500 * 1024) {
-        // Можно реализовать загрузку в Storage для больших файлов
-        _showToast('Файл слишком большой для прямой отправки');
+        await _sendLargeFile(file, fileName, fileSize, previewText);
         return;
       }
 
@@ -250,16 +252,50 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       await _chatRepository.sendMessage(widget.chatId, message);
-      await _chatRepository.updateLastMessage(widget.chatId, previewText);
-
+      await _chatRepository.updateLastMessage(widget.chatId, previewText, type);
       setState(() {
         _replyingToId = null;
         _replyingToText = null;
       });
       _scrollToBottom();
     } catch (e, stack) {
-      _logger.error('Failed to send media message', e, stack);
+      _logger.error('Failed to send media message', error: e, stack: stack);
       _showToast('Ошибка отправки файла');
+    }
+  }
+
+  Future<void> _sendLargeFile(File file, String fileName, int fileSize, String previewText) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final fileId = await _chunkedFileService.uploadLargeFile(bytes, fileName);
+
+      final mediaData = {
+        'largeFileId': fileId,
+        'fileName': fileName,
+        'fileSize': fileSize,
+      };
+
+      final message = Message(
+        id: '',
+        senderId: _currentUser.uid,
+        text: '',
+        timestamp: Timestamp.now(),
+        replyToMessageId: _replyingToId,
+        repliedMessageText: _replyingToText,
+        type: 'large_file',
+        mediaData: mediaData,
+      );
+
+      await _chatRepository.sendMessage(widget.chatId, message);
+      await _chatRepository.updateLastMessage(widget.chatId, '📁 $fileName', 'large_file');
+      setState(() {
+        _replyingToId = null;
+        _replyingToText = null;
+      });
+      _scrollToBottom();
+    } catch (e, stack) {
+      _logger.error('Failed to send large file', error: e, stack: stack);
+      _showToast('Ошибка отправки большого файла');
     }
   }
 
@@ -429,11 +465,11 @@ class _ChatScreenState extends State<ChatScreen> {
               title: const Text('Голосовое сообщение'),
               onTap: () { Navigator.pop(context); _startVoiceRecording(); },
             ),
-            ListTile(
-              leading: CircleAvatar(backgroundColor: Colors.pink.withValues(alpha: 0.1), child: const Icon(Icons.videocam_rounded, color: Colors.pink)),
-              title: const Text('Видеокружок'),
-              onTap: () { Navigator.pop(context); _startCircleVideoRecording(); },
-            ),
+            // ListTile(
+            //   leading: CircleAvatar(backgroundColor: Colors.pink.withValues(alpha: 0.1), child: const Icon(Icons.videocam_rounded, color: Colors.pink)),
+            //   title: const Text('Видеокружок'),
+            //   onTap: () { Navigator.pop(context); _startCircleVideoRecording(); },
+            // ),
             const SizedBox(height: 12),
           ],
         ),
@@ -456,7 +492,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final settings = Provider.of<SettingsProvider>(context);
     final bgColor = settings.chatBackgroundColor ?? (isLight ? Colors.white : Colors.black);
-    final wallpaper = settings.wallpaperUrl;
+    final accentColor = settings.accentColor;
 
     return Scaffold(
       appBar: AppBar(
@@ -501,10 +537,12 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         centerTitle: false,
       ),
-      body: Container(
-        decoration: wallpaper != null
-            ? BoxDecoration(image: DecorationImage(image: NetworkImage(wallpaper), fit: BoxFit.cover))
-            : BoxDecoration(color: bgColor),
+      body: ChatBackground(
+        backgroundColor: bgColor,
+        wallpaperUrl: settings.wallpaperUrl,
+        enableEffects: settings.useProceduralBackground,
+        // gradientStart: settings.gradientStartColor,
+        // gradientEnd: settings.gradientEndColor,
         child: Column(
           children: [
             Expanded(
@@ -540,18 +578,18 @@ class _ChatScreenState extends State<ChatScreen> {
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: isLight ? Colors.blue.withValues(alpha: 0.1) : Colors.blue.withValues(alpha: 0.1),
+                        color: accentColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.reply, color: Colors.blue),
+                          Icon(Icons.reply, color: accentColor),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Ответ на сообщение', style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                Text('Ответ на сообщение', style: TextStyle(color: accentColor, fontSize: 12)),
                                 Text(
                                   _replyingToText ?? '',
                                   maxLines: 1,
@@ -591,8 +629,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       CupertinoButton(
                         padding: EdgeInsets.zero,
                         onPressed: () {},
-                        onLongPress: _startCircleVideoRecording,
-                        child: Icon(Icons.videocam_rounded, color: isLight ? CupertinoColors.systemGrey : Colors.grey, size: 28),
+                        onLongPress: _startVoiceRecording,
+                        child: Icon(Icons.mic, color: isLight ? CupertinoColors.systemGrey : Colors.grey, size: 28),
                       ),
                       ValueListenableBuilder<TextEditingValue>(
                         valueListenable: _messageController,
@@ -603,7 +641,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             onPressed: hasText ? _sendMessage : null,
                             child: Icon(
                               CupertinoIcons.arrow_up_circle_fill,
-                              color: hasText ? CupertinoColors.activeBlue : (isLight ? CupertinoColors.systemGrey3 : Colors.grey),
+                              color: hasText ? accentColor : (isLight ? CupertinoColors.systemGrey3 : Colors.grey),
                               size: 32,
                             ),
                           );

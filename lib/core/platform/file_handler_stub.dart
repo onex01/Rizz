@@ -1,3 +1,3 @@
 import 'file_handler.dart';
 
-FileHandler createFileHandler() => throw UnsupportedError('Cannot create FileHandler.');
+FileHandler createFileHandler() => throw UnsupportedError('No implementation');

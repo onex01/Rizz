@@ -9,7 +9,6 @@ class WebNotificationService implements NotificationService {
 
   @override
   Future<void> initialize() async {
-    // Убедись, что VAPID ключ правильный
     final token = await _fcm.getToken(vapidKey: 'YOUR_VAPID_KEY');
     print('Web FCM Token: $token');
 
@@ -35,7 +34,14 @@ class WebNotificationService implements NotificationService {
     required String title,
     required String body,
     String? payload,
-  }) async {
-    // На вебе уведомления приходят через Service Worker
-  }
+  }) async {}
+
+  @override
+  Future<void> showMessageNotification({
+    required String chatId,
+    required String senderName,
+    required String content,
+    required String messageType,
+    String? senderPhotoUrl,
+  }) async {}
 }

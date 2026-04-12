@@ -22,7 +22,7 @@ class StorageServiceImpl implements StorageService {
       await ref.putFile(file);
       return await ref.getDownloadURL();
     } catch (e, stack) {
-      await _logger.error('Avatar upload failed', e, stack);
+      await _logger.error('Avatar upload failed', error: e, stack: stack);
       rethrow;
     }
   }
@@ -34,7 +34,7 @@ class StorageServiceImpl implements StorageService {
       await ref.putFile(file);
       return await ref.getDownloadURL();
     } catch (e, stack) {
-      await _logger.error('File upload failed', e, stack);
+      await _logger.error('File upload failed', error: e, stack: stack);
       rethrow;
     }
   }

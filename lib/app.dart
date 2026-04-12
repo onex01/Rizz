@@ -9,9 +9,41 @@ import 'core/settings/settings_provider.dart';
 import 'features/auth/presentation/auth_screen.dart';
 import 'features/home/presentation/home_screen.dart';
 import 'shared/services/auth_service.dart';
+import 'shared/services/presence_service.dart';
+import 'shared/services/message_listener_service.dart';
 
-class RizzApp extends StatelessWidget {
+class RizzApp extends StatefulWidget {
   const RizzApp({super.key});
+
+  @override
+  State<RizzApp> createState() => _RizzAppState();
+}
+
+class _RizzAppState extends State<RizzApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final presence = GetIt.I<PresenceService>();
+    final listener = GetIt.I<MessageListenerService>();
+    if (state == AppLifecycleState.paused) {
+      presence.goOffline();
+      listener.setAppInBackground(true);
+    } else if (state == AppLifecycleState.resumed) {
+      presence.initPresence();
+      listener.setAppInBackground(false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +62,6 @@ class RizzApp extends StatelessWidget {
             themeMode: themeProvider.themeMode,
             home: const AuthWrapper(),
           );
-
         },
       ),
     );
@@ -38,9 +69,7 @@ class RizzApp extends StatelessWidget {
 
   ThemeData _applyTheme(ThemeData base, SettingsProvider settings) {
     return base.copyWith(
-      colorScheme: base.colorScheme.copyWith(
-        primary: settings.accentColor,
-      ),
+      colorScheme: base.colorScheme.copyWith(primary: settings.accentColor),
       textTheme: base.textTheme.copyWith(
         bodyLarge: base.textTheme.bodyLarge?.copyWith(fontSize: settings.fontSize),
         bodyMedium: base.textTheme.bodyMedium?.copyWith(fontSize: settings.fontSize - 2),
@@ -68,7 +97,6 @@ class AuthWrapper extends StatelessWidget {
 
         if (snapshot.hasData) {
           final user = snapshot.data!;
-          // Сохраняем FCM токен после входа
           notificationService.getToken().then((token) {
             if (token != null && user.uid.isNotEmpty) {
               authService.updateUserProfile(user.uid, {'fcmToken': token});
@@ -87,7 +115,6 @@ class AuthWrapper extends StatelessWidget {
   }
 }
 
-// Экран подтверждения email (можно взять из исходного кода)
 class EmailVerificationScreen extends StatelessWidget {
   const EmailVerificationScreen({super.key});
 

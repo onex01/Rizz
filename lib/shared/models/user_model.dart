@@ -1,15 +1,19 @@
 class UserModel {
   final String uid;
   final String email;
+  final String? username;
   final String nickname;
   final String? photoUrl;
+  final String? avatarHex;
   final String? bio;
 
   UserModel({
     required this.uid,
     required this.email,
     required this.nickname,
+    this.username,
     this.photoUrl,
+    this.avatarHex,
     this.bio,
   });
 
@@ -17,9 +21,10 @@ class UserModel {
     return {
       'uid': uid,
       'email': email,
-      'nickname': nickname.toLowerCase().trim(),
+      'nickname': nickname,
       'photoUrl': photoUrl,
-      'bio': bio ?? '',
+      'avatarHex': avatarHex,
+      'bio': bio,
     };
   }
 
@@ -29,6 +34,7 @@ class UserModel {
       email: map['email'],
       nickname: map['nickname'] ?? '',
       photoUrl: map['photoUrl'],
+      avatarHex: map['avatarHex'],
       bio: map['bio'],
     );
   }

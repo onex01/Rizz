@@ -6,19 +6,17 @@ import '../../version.dart';
 import '../utils/device_info.dart';
 
 class RemoteLogger {
-  static const String _apiUrl = 'https://rizz.onex01.ru/api/logs';
+  static const String _apiUrl = 'https://rizz.onex01.ru/api/logs/';
 
   Future<void> sendLog({
     required String level,
-    required String message,
-    String? error,
-    String? stackTrace,
+    required String summary,
+    String? details,
     Map<String, dynamic>? metadata,
   }) async {
-    if (kDebugMode) return; // не отправляем в дебаге
+    if (kDebugMode) return;
 
     try {
-      // Добавляем информацию об устройстве
       final deviceInfo = await DeviceInfo.gather();
       final fullMetadata = {
         ...?metadata,
@@ -27,20 +25,23 @@ class RemoteLogger {
 
       final body = jsonEncode({
         'level': level,
-        'message': message,
-        'error': error,
-        'stackTrace': stackTrace,
+        'summary': summary,
+        'details': details,
         'metadata': fullMetadata,
         'timestamp': DateTime.now().toIso8601String(),
         'appVersion': AppVersion.fullVersion,
         'platform': Platform.operatingSystem,
       });
 
-      await http.post(
+      final response = await http.post(
         Uri.parse(_apiUrl),
         headers: {'Content-Type': 'application/json'},
         body: body,
       ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode != 201) {
+        debugPrint('RemoteLogger: Server returned ${response.statusCode}');
+      }
     } catch (e) {
       debugPrint('RemoteLogger error: $e');
     }

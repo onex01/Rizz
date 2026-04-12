@@ -6,7 +6,7 @@ abstract class ChatRepository {
   Future<void> sendMessage(String chatId, Message message);
   Stream<QuerySnapshot> getMessages(String chatId);
   Stream<QuerySnapshot> getChats(String userId);
-  Future<void> updateLastMessage(String chatId, String preview);
+  Future<void> updateLastMessage(String chatId, String preview, String type);
 }
 
 class ChatRepositoryImpl implements ChatRepository {
@@ -23,9 +23,13 @@ class ChatRepositoryImpl implements ChatRepository {
           .doc(chatId)
           .collection('messages')
           .add(message.toMap());
-      await updateLastMessage(chatId, message.text.isNotEmpty ? message.text : 'Медиа');
+      await updateLastMessage(
+        chatId,
+        message.text.isNotEmpty ? message.text : 'Медиа',
+        message.type,
+      );
     } catch (e, stack) {
-      _logger.error('Failed to send message', e, stack);
+      _logger.error('Failed to send message', error: e, stack: stack);
       rethrow;
     }
   }
@@ -50,9 +54,10 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<void> updateLastMessage(String chatId, String preview) async {
+  Future<void> updateLastMessage(String chatId, String preview, String type) async {
     await _firestore.collection('chats').doc(chatId).update({
       'lastMessage': preview,
+      'lastMessageType': type,
       'lastMessageTime': FieldValue.serverTimestamp(),
     });
   }

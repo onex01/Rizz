@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:get_it/get_it.dart';
@@ -164,7 +163,7 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
         Fluttertoast.showToast(msg: 'Не удалось сохранить файл');
       }
     } catch (e, stack) {
-      _logger.error('Download file error', e, stack);
+      _logger.error('Download file error', error: e, stack: stack);
       Fluttertoast.showToast(msg: 'Ошибка сохранения файла');
     }
   }

@@ -4,21 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:get_it/get_it.dart';
 import 'package:open_file/open_file.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../core/logger/app_logger.dart';
 import '../../core/platform/platform_info.dart';
 import '../../version.dart';
 
 class UpdateInfo {
   final String version;
-  final String downloadUrl;
-  final int fileSize;
+  final String androidUrl;
   final String? windowsUrl;
   final String? linuxUrl;
   final String? macUrl;
+  final int fileSize;
 
   UpdateInfo({
     required this.version,
-    required this.downloadUrl,
+    required this.androidUrl,
     required this.fileSize,
     this.windowsUrl,
     this.linuxUrl,
@@ -28,7 +29,7 @@ class UpdateInfo {
   factory UpdateInfo.fromJson(Map<String, dynamic> json) {
     return UpdateInfo(
       version: json['version'],
-      downloadUrl: json['androidUrl'] ?? json['downloadUrl'] ?? '',
+      androidUrl: json['androidUrl'] ?? json['downloadUrl'] ?? '',
       fileSize: json['fileSize'] ?? 0,
       windowsUrl: json['windowsUrl'],
       linuxUrl: json['linuxUrl'],
@@ -38,12 +39,10 @@ class UpdateInfo {
 
   String? get urlForCurrentPlatform {
     final platform = GetIt.I<PlatformInfo>();
-    if (platform.isMobile && Platform.isAndroid) return downloadUrl;
-    if (platform.isDesktop) {
-      if (Platform.isWindows) return windowsUrl;
-      if (Platform.isLinux) return linuxUrl;
-      if (Platform.isMacOS) return macUrl;
-    }
+    if (Platform.isAndroid) return androidUrl;
+    if (Platform.isWindows) return windowsUrl;
+    if (Platform.isLinux) return linuxUrl;
+    if (Platform.isMacOS) return macUrl;
     return null;
   }
 }
@@ -73,7 +72,7 @@ class UpdateService {
       }
       return null;
     } catch (e, stack) {
-      await _logger.error('Update check failed', e, stack);
+      await _logger.error('Update check failed', error: e, stack: stack);
       return null;
     }
   }
@@ -127,31 +126,46 @@ class UpdateService {
       final response = await http.get(Uri.parse(url));
       final bytes = response.bodyBytes;
 
-      final downloadsDir = await _platform.getDownloadsDirectory();
-      if (downloadsDir == null) throw Exception('Не удалось получить папку загрузок');
+      Directory saveDir;
+      if (Platform.isAndroid) {
+        // Используем внешнюю папку Downloads
+        saveDir = Directory('/storage/emulated/0/Download');
+        if (!await saveDir.exists()) {
+          saveDir = await getApplicationDocumentsDirectory();
+        }
+      } else {
+        final downloads = await _platform.getDownloadsDirectory();
+        saveDir = downloads ?? await getApplicationDocumentsDirectory();
+      }
 
       final fileName = _getFileNameForPlatform(url);
-      final file = File('${downloadsDir.path}/$fileName');
+      final file = File('${saveDir.path}/$fileName');
       await file.writeAsBytes(bytes);
 
       Navigator.pop(context); // убираем прогресс
 
-      await _platform.openFile(file.path);
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Файл сохранён: ${file.path}')),
-        );
+      // Открываем файл
+      final result = await OpenFile.open(file.path);
+      if (result.type != ResultType.done) {
+        if (context.mounted) {
+          _showError(context, 'Не удалось открыть установщик. Файл сохранён в ${file.path}');
+        }
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Файл сохранён: ${file.path}')),
+          );
+        }
       }
     } catch (e, stack) {
-      await _logger.error('Update download failed', e, stack);
+      await _logger.error('Update download failed', error: e, stack: stack);
       Navigator.pop(context);
       if (context.mounted) _showError(context, 'Ошибка загрузки обновления');
     }
   }
 
   String _getFileNameForPlatform(String url) {
-    if (_platform.isMobile) return 'Rizz_update.apk';
+    if (Platform.isAndroid) return 'Rizz_update.apk';
     if (Platform.isWindows) return 'Rizz_Setup.exe';
     if (Platform.isLinux) return 'rizz.deb';
     if (Platform.isMacOS) return 'Rizz.dmg';

@@ -106,7 +106,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         );
       }
     } catch (e, stack) {
-      _logger.error('Auth error', e, stack);
+      _logger.error('Auth error', error: e, stack: stack);
       if (mounted) {
         Fluttertoast.showToast(
           msg: "Произошла ошибка: ${e.toString().split('\n').first}",
@@ -136,7 +136,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         );
       }
     } catch (e, stack) {
-      _logger.error('Google sign in error', e, stack);
+      _logger.error('Google sign in error', error: e, stack: stack);
       if (mounted) {
         Fluttertoast.showToast(
           msg: "Ошибка входа через Google",

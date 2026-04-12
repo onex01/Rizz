@@ -12,8 +12,14 @@ import '../../profile/presentation/user_profile_screen.dart';
 class ChatList extends StatefulWidget {
   final String currentUserId;
   final String searchQuery;
+  final ScrollController? scrollController;
 
-  const ChatList({super.key, required this.currentUserId, required this.searchQuery});
+  const ChatList({
+    super.key,
+    required this.currentUserId,
+    required this.searchQuery,
+    this.scrollController,
+  });
 
   @override
   State<ChatList> createState() => _ChatListState();
@@ -25,12 +31,14 @@ class _ChatListState extends State<ChatList> {
   final _logger = GetIt.I<AppLogger>();
 
   final Map<String, String> _userNicknames = {};
+  final Map<String, String> _userUsernames = {};
   final Map<String, String> _userPhotoUrls = {};
 
   @override
   void initState() {
     super.initState();
     _ensureSelfNotesChatExists();
+    _preloadAllChatUsers();
   }
 
   Future<void> _ensureSelfNotesChatExists() async {
@@ -46,8 +54,13 @@ class _ChatListState extends State<ChatList> {
         });
       }
     } catch (e, stack) {
-      _logger.error('Error ensuring self chat exists', e, stack);
+      _logger.error('Error ensuring self chat exists', error: e, stack: stack);
     }
+  }
+
+  Future<void> _preloadAllChatUsers() async {
+    final snapshot = await _firestoreService.getChats(widget.currentUserId).first;
+    await _loadUserInfoIfNeeded(snapshot.docs);
   }
 
   @override
@@ -111,7 +124,10 @@ class _ChatListState extends State<ChatList> {
               orElse: () => widget.currentUserId,
             );
             final isSelfChat = data['isSelfChat'] == true;
-            final displayName = isSelfChat ? 'Заметки' : (_userNicknames[otherUserId] ?? otherUserId);
+            final displayName = isSelfChat ? 'Заметки' : 
+              (_userUsernames[otherUserId] != null && _userUsernames[otherUserId]!.isNotEmpty 
+                ? '@${_userUsernames[otherUserId]}' 
+                : _userNicknames[otherUserId] ?? otherUserId);
             final photoUrl = _userPhotoUrls[otherUserId];
             final isPinned = data['pinned'] ?? false;
             final lastMessage = data['lastMessage'] ?? 'Нет сообщений';
@@ -255,7 +271,7 @@ class _ChatListState extends State<ChatList> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Чат и все сообщения удалены')));
       }
     } catch (e) {
-      _logger.error('Error deleting chat', e);
+      _logger.error('Error deleting chat', error: e);
     }
   }
 
@@ -287,15 +303,17 @@ class _ChatListState extends State<ChatList> {
     }
     if (uidsToLoad.isEmpty) return;
 
-    // Сначала из кэша
+    // Сначала пробуем кэш
     for (var uid in uidsToLoad) {
       final cachedNick = _userCache.getNickname(uid);
+      final cachedUsername = _userCache.getUsername(uid);
       final cachedPhoto = _userCache.getPhotoUrl(uid);
       if (cachedNick != null) _userNicknames[uid] = cachedNick;
+      if (cachedUsername != null) _userUsernames[uid] = cachedUsername;
       if (cachedPhoto != null) _userPhotoUrls[uid] = cachedPhoto;
     }
 
-    // Загружаем недостающие
+    // Загружаем недостающие из Firestore
     final uidsToFetch = uidsToLoad.where((uid) => !_userNicknames.containsKey(uid)).toList();
     if (uidsToFetch.isEmpty) {
       if (mounted) setState(() {});
@@ -309,14 +327,16 @@ class _ChatListState extends State<ChatList> {
           .get();
       for (var doc in snapshot.docs) {
         final nickname = doc['nickname'] ?? doc.id;
+        final username = doc['username'] ?? '';
         final photoUrl = doc['photoUrl'] ?? '';
         _userNicknames[doc.id] = nickname;
+        _userUsernames[doc.id] = username;
         _userPhotoUrls[doc.id] = photoUrl;
-        await _userCache.cacheUser(doc.id, nickname, photoUrl);
+        await _userCache.cacheUser(doc.id, nickname, photoUrl, username);
       }
       if (mounted) setState(() {});
     } catch (e) {
-      _logger.error('Error loading user info for chat list', e);
+      _logger.error('Error loading user info for chat list', error: e);
     }
   }
 }

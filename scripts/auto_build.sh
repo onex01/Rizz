@@ -16,7 +16,7 @@ SERVER_PATH="/var/www/rizz"
 UPLOAD_URL="https://rizz.onex01.ru/"
 
 # Пути
-PROJECT_DIR="/home/one/Rizz/"
+PROJECT_DIR="/home/one/Rizz-All/Rizz/"
 BACKUP_DIR="$PROJECT_DIR/.backup"
 
 cd $PROJECT_DIR

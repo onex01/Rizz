@@ -58,7 +58,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         setState(() => _isLoading = false);
       }
     } catch (e) {
-      _logger.error('Error loading user profile', e);
+      _logger.error('Error loading user profile', error: e);
       setState(() => _isLoading = false);
     }
   }
@@ -72,7 +72,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         setState(() => _isFriend = friends.contains(widget.userId));
       }
     } catch (e) {
-      _logger.error('Error checking friend status', e);
+      _logger.error('Error checking friend status', error: e);
     }
   }
 

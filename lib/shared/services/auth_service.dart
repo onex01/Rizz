@@ -84,7 +84,7 @@ class AuthServiceImpl implements AuthService {
       }, SetOptions(merge: true));
       return user;
     } catch (e, stack) {
-      await _logger.error('Google sign in failed', e, stack);
+      await _logger.error('Google sign in failed', error: e, stack: stack);
       return null;
     }
   }

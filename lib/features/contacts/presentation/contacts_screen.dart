@@ -61,7 +61,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         }
       }
     } catch (e, stack) {
-      _logger.error('Error loading friends', e, stack);
+      _logger.error('Error loading friends', error: e, stack: stack);
       setState(() => _isLoading = false);
     }
   }

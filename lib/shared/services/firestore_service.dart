@@ -3,11 +3,10 @@ import '../../core/logger/app_logger.dart';
 
 abstract class FirestoreService {
   Future<DocumentSnapshot> getUser(String uid);
-  Future<void> updateUser(String uid, Map<String, dynamic> data);
+  Future<void> updateUser(String uid, Map<String, dynamic> updates);
   Stream<QuerySnapshot> getChats(String userId);
-  Future<DocumentReference> createChat(Map<String, dynamic> data);
-  Future<void> updateChat(String chatId, Map<String, dynamic> data);
-  Future<void> addMessage(String chatId, Map<String, dynamic> messageData);
+  Future<void> updateChat(String chatId, Map<String, dynamic> updates);
+  Future<bool> isUsernameAvailable(String username);
 }
 
 class FirestoreServiceImpl implements FirestoreService {
@@ -41,4 +40,14 @@ class FirestoreServiceImpl implements FirestoreService {
   @override
   Future<void> addMessage(String chatId, Map<String, dynamic> messageData) =>
       _firestore.collection('chats').doc(chatId).collection('messages').add(messageData);
+
+  @override
+  Future<bool> isUsernameAvailable(String username) async {
+    final snapshot = await _firestore
+        .collection('users')
+        .where('username', isEqualTo: username)
+        .limit(1)
+        .get();
+    return snapshot.docs.isEmpty;
+  }
 }

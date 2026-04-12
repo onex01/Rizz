@@ -173,31 +173,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showFontSizePicker(settings),
         ),
-        ListTile(
-          leading: Icon(Icons.wallpaper, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
-          title: Text('Обои чата', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showWallpaperPicker(settings),
-        ),
-        ListTile(
-          leading: Icon(Icons.format_color_fill, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
-          title: Text('Цвет фона чата', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
-          trailing: Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: settings.chatBackgroundColor ?? (isLight ? Colors.white : Colors.black),
-              shape: BoxShape.circle,
-              border: Border.all(color: isLight ? Colors.grey.shade400 : Colors.grey.shade600),
-            ),
-          ),
-          onTap: () => _showChatBackgroundColorPicker(settings, isLight),
+        SwitchListTile(
+          title: const Text('Анимированный градиент'),
+          subtitle: const Text('Волны и переливы цвета'),
+          value: settings.useProceduralBackground,
+          onChanged: (value) {
+            // Если включаем эффекты, отключаем обои (можно реализовать логику конфликта)
+            if (value && settings.wallpaperUrl != null) {
+              settings.setWallpaper(null);
+            }
+            settings.setUseProceduralBackground(value);
+          },
         ),
       ],
     );
   }
 
   Widget _buildChatSection(bool isLight) {
+    final settings = Provider.of<SettingsProvider>(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -205,18 +198,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Text(
             'Чаты',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: isLight ? Colors.grey.shade700 : Colors.grey.shade400,
+            ),
           ),
         ),
         SwitchListTile(
-          title: Text('Показывать аватарки', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
-          value: true,
-          onChanged: (value) {},
+          title: Text('Показывать аватарки',
+              style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
+          value: settings.showAvatars,
+          onChanged: settings.setShowAvatars,
         ),
         SwitchListTile(
-          title: Text('Отправка по Enter', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
-          value: true,
-          onChanged: (value) {},
+          title: Text('Отправка по Enter',
+              style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
+          value: settings.sendByEnter,
+          onChanged: settings.setSendByEnter,
         ),
       ],
     );
@@ -323,31 +322,246 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ... (методы диалогов: _showThemePicker, _showColorPicker, _showFontSizePicker, _showWallpaperPicker, _showChatBackgroundColorPicker, _showCacheOptions, _showAboutDialog, _showLogoutDialog)
-  // Они полностью копируются из исходного settings_screen.dart, с заменой вызовов на Provider и GetIt.
-  // Приведу только сигнатуры, реализацию можно скопировать из старого файла.
+  void _showThemePicker(ThemeProvider theme) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.light_mode),
+            title: const Text('Светлая'),
+            trailing: theme.themeMode == ThemeMode.light ? const Icon(Icons.check, color: Colors.blue) : null,
+            onTap: () {
+              theme.setTheme(ThemeMode.light);
+              Navigator.pop(context);
+            },
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.dark_mode),
+            title: const Text('Тёмная'),
+            trailing: theme.themeMode == ThemeMode.dark ? const Icon(Icons.check, color: Colors.blue) : null,
+            onTap: () {
+              theme.setTheme(ThemeMode.dark);
+              Navigator.pop(context);
+            },
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.smartphone),
+            title: const Text('Системная'),
+            trailing: theme.themeMode == ThemeMode.system ? const Icon(Icons.check, color: Colors.blue) : null,
+            onTap: () {
+              theme.setTheme(ThemeMode.system);
+              Navigator.pop(context);
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
 
-  void _showThemePicker(ThemeProvider theme) { /* как в исходнике */ }
-  void _showColorPicker(SettingsProvider settings) { /* ... */ }
-  void _showFontSizePicker(SettingsProvider settings) { /* ... */ }
-  void _showWallpaperPicker(SettingsProvider settings) { /* ... */ }
-  void _showChatBackgroundColorPicker(SettingsProvider settings, bool isLight) { /* ... */ }
+  void _showColorPicker(SettingsProvider settings) {
+    final colors = [
+      Colors.blue, Colors.green, Colors.red,
+      Colors.purple, Colors.orange, Colors.teal,
+      Colors.pink, Colors.indigo
+    ];
+    final colorNames = [
+      'Синий', 'Зелёный', 'Красный',
+      'Фиолетовый', 'Оранжевый', 'Бирюзовый',
+      'Розовый', 'Индиго'
+    ];
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Wrap(
+        children: List.generate(colors.length, (index) {
+          return ListTile(
+            leading: CircleAvatar(
+              backgroundColor: colors[index],
+              radius: 16,
+            ),
+            title: Text(colorNames[index]),
+            trailing: settings.accentColor == colors[index]
+                ? const Icon(Icons.check, color: Colors.blue)
+                : null,
+            onTap: () {
+              settings.setAccentColor(colors[index]);
+              Navigator.pop(context);
+            },
+          );
+        }),
+      ),
+    );
+  }
+
+  void _showFontSizePicker(SettingsProvider settings) {
+    double tempSize = settings.fontSize;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Размер шрифта'),
+        content: StatefulBuilder(
+          builder: (context, setState) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${tempSize.toStringAsFixed(0)} pt',
+                  style: TextStyle(fontSize: tempSize),
+                ),
+                const SizedBox(height: 20),
+                Slider(
+                  value: tempSize,
+                  min: 12,
+                  max: 24,
+                  divisions: 12,
+                  label: tempSize.toStringAsFixed(0),
+                  onChanged: (value) {
+                    setState(() {
+                      tempSize = value;
+                    });
+                  },
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              settings.setFontSize(tempSize);
+              Navigator.pop(context);
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWallpaperPicker(SettingsProvider settings) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Wrap(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.wallpaper),
+            title: const Text('Выбрать из галереи'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: реализовать выбор обоев
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Выбор обоев из галереи в разработке')),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.palette),
+            title: const Text('Цвет фона'),
+            onTap: () {
+              Navigator.pop(context);
+              // TODO: выбор цвета обоев
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Выбор цвета в разработке')),
+              );
+            },
+          ),
+          if (settings.wallpaperUrl != null)
+            ListTile(
+              leading: const Icon(Icons.delete),
+              title: const Text('Удалить обои'),
+              onTap: () {
+                settings.setWallpaper(null);
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Обои удалены')),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showChatBackgroundColorPicker(SettingsProvider settings, bool isLight) {
+    final colors = [
+      Colors.white,
+      Colors.black,
+      Colors.grey.shade200,
+      Colors.blue.shade50,
+      Colors.green.shade50,
+      Colors.red.shade50,
+    ];
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Wrap(
+        children: colors.map((color) {
+          return ListTile(
+            leading: CircleAvatar(backgroundColor: color),
+            title: Text(_getColorName(color)),
+            trailing: settings.chatBackgroundColor == color
+                ? const Icon(Icons.check, color: Colors.blue)
+                : null,
+            onTap: () {
+              settings.setChatBackgroundColor(color);
+              Navigator.pop(context);
+            },
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   void _showCacheOptions() {
+    final cache = MessageFileCache();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Кэш сообщений'),
-        content: Text('В кэше сейчас: ${_cache.size} файлов\n\nОчистить кэш сообщений?'),
+        content: Text(
+          'В кэше сейчас: ${cache.size} файлов\n\n'
+          'Очистить кэш сообщений?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
           ElevatedButton(
-            onPressed: () {
-              _cache.clear();
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Кэш сообщений очищен')));
-              setState(() {});
+            onPressed: () async {
+              cache.clear();
+              if (mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Кэш сообщений очищен')),
+                );
+                setState(() {});
+              }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Очистить'),
           ),
         ],
@@ -355,7 +569,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showAboutDialog() { /* ... */ }
+  void _showAboutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rizz'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Мессенджер с открытым исходным кодом'),
+            const SizedBox(height: 8),
+            Text('Версия: $_appVersion ($_buildNumber)'),
+            const SizedBox(height: 8),
+            const Text('Сделано командой © 2026 Duality Project'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -363,13 +602,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Выход'),
         content: const Text('Вы уверены, что хотите выйти из аккаунта?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
           ElevatedButton(
             onPressed: () async {
               await FirebaseAuth.instance.signOut();
-              if (mounted) Navigator.popUntil(context, (route) => route.isFirst);
+              if (mounted) {
+                Navigator.popUntil(context, (route) => route.isFirst);
+              }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Выйти'),
           ),
         ],
