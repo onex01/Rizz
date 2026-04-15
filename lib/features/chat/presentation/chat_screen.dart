@@ -623,6 +623,11 @@ class _ChatScreenState extends State<ChatScreen> {
                           keyboardAppearance: isLight ? Brightness.light : Brightness.dark,
                           textCapitalization: TextCapitalization.sentences,
                           onChanged: (_) => _updateTypingStatus(),
+                          onSubmitted: (_) {
+                            if (settings.sendByEnter) {
+                              _sendMessage();
+                            }
+                          },
                         ),
                       ),
                       const SizedBox(width: 4),

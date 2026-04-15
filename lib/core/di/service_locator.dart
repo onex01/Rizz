@@ -63,7 +63,8 @@ Future<void> setupServiceLocator() async {
   sl.registerLazySingleton<UpdateService>(() => UpdateService());
   sl.registerLazySingleton<MessageFileCache>(() => MessageFileCache());
   sl.registerLazySingleton<UserCacheService>(() => UserCacheService());
-  sl.registerLazySingleton<ChunkedFileService>(() => ChunkedFileService(sl<FirebaseFirestore>()));
+  sl.registerLazySingleton<ChunkedFileService>(() => ChunkedFileService());
+  
 
   // Репозитории фич
   sl.registerLazySingleton<ChatRepository>(() => ChatRepositoryImpl(

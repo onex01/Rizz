@@ -459,8 +459,15 @@ class _HomeScreenState extends State<HomeScreen> {
             final userData = users[index].data() as Map<String, dynamic>;
             final userId = users[index].id;
             final nickname = userData['nickname'] ?? 'Без имени';
+            final username = userData['username'] ?? '';
             final photoUrl = userData['photoUrl'];
+            final searchLower = _searchQuery.toLowerCase();
+            if (!nickname.toLowerCase().contains(searchLower) && 
+                !username.toLowerCase().contains(searchLower)) {
+              return const SizedBox.shrink();
+            }
             if (userId == _currentUser.uid) return const SizedBox.shrink();
+            final displayName = username.isNotEmpty ? '@$username' : nickname;
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               elevation: 0,
@@ -476,7 +483,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: photoUrl == null ? Icon(Icons.person, size: 32, color: isLight ? Colors.grey : Colors.grey.shade400) : null,
                 ),
                 title: Text(nickname, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500)),
-                subtitle: Text('@${userId.substring(0, 8)}', style: TextStyle(fontSize: 13, color: isLight ? Colors.grey.shade600 : Colors.grey.shade500)),
+                subtitle: Text(
+                  username.isNotEmpty ? nickname : '@${userId.substring(0, 8)}',
+                  style: TextStyle(fontSize: 13, color: isLight ? Colors.grey.shade600 : Colors.grey.shade500),
+                ),
                 trailing: ElevatedButton(
                   onPressed: () => _startChat(userId, nickname),
                   style: ElevatedButton.styleFrom(

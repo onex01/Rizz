@@ -15,6 +15,11 @@ class UserCacheService {
     if (photoUrl != null) await prefs.setString('$_photoPrefix$uid', photoUrl);
   }
 
+  Future<void> cacheAvatarHex(String uid, String hexData) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_avatarHexPrefix$uid', hexData);
+  }
+
   String? getNickname(String uid) {
     final prefs = SharedPreferences.getInstance() as SharedPreferences;
     return prefs.getString('$_nicknamePrefix$uid');

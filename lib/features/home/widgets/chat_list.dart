@@ -124,7 +124,7 @@ class _ChatListState extends State<ChatList> {
               orElse: () => widget.currentUserId,
             );
             final isSelfChat = data['isSelfChat'] == true;
-            final displayName = isSelfChat ? 'Заметки' : 
+            final displayName = isSelfChat ? 'Заметки' :
               (_userUsernames[otherUserId] != null && _userUsernames[otherUserId]!.isNotEmpty 
                 ? '@${_userUsernames[otherUserId]}' 
                 : _userNicknames[otherUserId] ?? otherUserId);
