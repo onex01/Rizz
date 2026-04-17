@@ -11,7 +11,6 @@ class SettingsProvider extends ChangeNotifier {
   bool _sendByEnter = false;
 
   bool _useProceduralBackground = false;
-
   bool get useProceduralBackground => _useProceduralBackground;
 
   String? get wallpaperUrl => _wallpaperUrl;
@@ -21,6 +20,7 @@ class SettingsProvider extends ChangeNotifier {
   Color? get chatBackgroundColor => _chatBackgroundColor;
   bool get showAvatars => _showAvatars;
   bool get sendByEnter => _sendByEnter;
+  
 
   SettingsProvider() {
     _loadSettings();

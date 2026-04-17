@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../shared/services/firestore_service.dart';
 import '../../chat/presentation/chat_screen.dart';
+import '../../../shared/services/user_cache_service.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String userId;
@@ -20,11 +22,13 @@ class UserProfileScreen extends StatefulWidget {
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
   final _firestoreService = GetIt.I<FirestoreService>();
+  final _userCache = GetIt.I<UserCacheService>();
   final _logger = GetIt.I<AppLogger>();
 
   String? _nickname;
   String? _photoUrl;
   String? _phoneNumber;
+  String? _username;
   String? _email;
   String? _bio;
   bool? _isOnline;
@@ -46,6 +50,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         final data = doc.data() as Map<String, dynamic>;
         setState(() {
           _nickname = data['nickname'] ?? 'Пользователь';
+          _username = data['username'];
           _photoUrl = data['photoUrl'];
           _phoneNumber = data['phoneNumber'];
           _email = data['email'] ?? widget.userId;
@@ -54,6 +59,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           _lastSeen = data['lastSeen']?.toDate();
           _isLoading = false;
         });
+        final avatarHex = data['avatarHex'];
+        if (avatarHex != null) {
+          await _userCache.cacheAvatarHex(widget.userId, avatarHex);
+        }
       } else {
         setState(() => _isLoading = false);
       }
@@ -136,13 +145,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       children: [
-                        CircleAvatar(
-                          radius: 70,
-                          backgroundImage: _photoUrl != null ? CachedNetworkImageProvider(_photoUrl!) : null,
-                          child: _photoUrl == null ? Icon(Icons.person, size: 70, color: isLight ? Colors.grey : Colors.grey.shade400) : null,
+                        FutureBuilder<File?>(
+                          future: _userCache.getAvatarFile(widget.userId),
+                          builder: (context, snapshot) {
+                            if (snapshot.hasData && snapshot.data != null) {
+                              return CircleAvatar(radius: 70, backgroundImage: FileImage(snapshot.data!));
+                            }
+                            if (_photoUrl != null && _photoUrl!.isNotEmpty) {
+                              return CircleAvatar(radius: 70, backgroundImage: CachedNetworkImageProvider(_photoUrl!));
+                            }
+                            return CircleAvatar(radius: 70, child: Icon(Icons.person, size: 70, color: isLight ? Colors.grey : Colors.grey.shade400));
+                          },
                         ),
                         const SizedBox(height: 16),
-                        Text(_nickname ?? 'Пользователь', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: isLight ? Colors.black : Colors.white)),
+                        Text(
+                          _username != null && _username!.isNotEmpty ? '@$_username' : (_nickname ?? 'Пользователь'),
+                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: isLight ? Colors.black : Colors.white),
+                        ),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),

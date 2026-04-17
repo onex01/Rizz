@@ -9,7 +9,7 @@ class WebNotificationService implements NotificationService {
 
   @override
   Future<void> initialize() async {
-    final token = await _fcm.getToken(vapidKey: 'YOUR_VAPID_KEY');
+    final token = await _fcm.getToken(vapidKey: 'BHfflPk3dkc5jRoLpgjVgZv6j1_hGsMjR3sJkBoaF0P32kNE0k5dLFhWqpMGkiXMCKb7v_gZuFHy1s_U9kg4ps8');
     print('Web FCM Token: $token');
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -22,7 +22,7 @@ class WebNotificationService implements NotificationService {
   }
 
   @override
-  Future<String?> getToken() => _fcm.getToken(vapidKey: 'YOUR_VAPID_KEY');
+  Future<String?> getToken() => _fcm.getToken(vapidKey: 'BHfflPk3dkc5jRoLpgjVgZv6j1_hGsMjR3sJkBoaF0P32kNE0k5dLFhWqpMGkiXMCKb7v_gZuFHy1s_U9kg4ps8');
 
   @override
   Stream<Map<String, dynamic>> get onMessage => _messageController.stream;

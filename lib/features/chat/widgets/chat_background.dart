@@ -17,6 +17,7 @@ class ChatBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+<<<<<<< HEAD
     return Stack(
       children: [
         // Фоновый слой
@@ -34,6 +35,27 @@ class ChatBackground extends StatelessWidget {
         // Контент поверх фона
         child,
       ],
+=======
+    Widget background;
+    if (wallpaperUrl != null && wallpaperUrl!.isNotEmpty) {
+      background = Image.network(wallpaperUrl!, fit: BoxFit.cover);
+    } else if (enableEffects) {
+      background = const _ProceduralGradientBackground();
+    } else {
+      background = Container(color: backgroundColor);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        image: background is Image ? DecorationImage(image: (background as Image).image, fit: BoxFit.cover) : null,
+      ),
+      child: Stack(
+        children: [
+          if (background is! Image) background,
+          child,
+        ],
+      ),
+>>>>>>> 5044046eb29ab30be8c4749474da8bfee2583193
     );
   }
 }

@@ -224,12 +224,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
         SwitchListTile(
-          title: Text('Показывать аватарки',
-              style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
-          value: settings.showAvatars,
-          onChanged: settings.setShowAvatars,
-        ),
-        SwitchListTile(
           title: Text('Отправка по Enter',
               style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
           value: settings.sendByEnter,

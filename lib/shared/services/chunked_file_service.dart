@@ -1,53 +1,72 @@
-import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ChunkedFileService {
-  static const int CHUNK_SIZE = 400 * 1024; // 400 KB
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static const int chunkSize = 400 * 1024; // 400 KB
 
-  final FirebaseFirestore firestore;
+  Future<String> uploadLargeFile(List<int> bytes, String fileName) async {
+    final fileId = _generateFileId();
+    final totalChunks = (bytes.length / chunkSize).ceil();
 
-  ChunkedFileService(this.firestore);
+    final batch = _firestore.batch();
+    final chunksRef = _firestore.collection('file_chunks').doc(fileId).collection('chunks');
 
-  Future<String> uploadLargeFile(Uint8List bytes, String fileName) async {
-    final fileId = firestore.collection('large_files').doc().id;
-    final base64String = base64Encode(bytes);
-    final chunks = <String>[];
-
-    final totalChunks = (base64String.length / CHUNK_SIZE).ceil();
     for (int i = 0; i < totalChunks; i++) {
-      final start = i * CHUNK_SIZE;
-      final end = (start + CHUNK_SIZE < base64String.length)
-          ? start + CHUNK_SIZE
-          : base64String.length;
-      final chunk = base64String.substring(start, end);
-      final chunkDoc = await firestore.collection('file_chunks').add({
-        'fileId': fileId,
+      final start = i * chunkSize;
+      final end = min(start + chunkSize, bytes.length);
+      final chunk = bytes.sublist(start, end);
+      final hex = _bytesToHex(chunk);
+      final chunkDoc = chunksRef.doc('chunk_$i');
+      batch.set(chunkDoc, {
+        'hex': hex,
         'index': i,
-        'data': chunk,
+        'total': totalChunks,
       });
-      chunks.add(chunkDoc.id);
     }
 
-    await firestore.collection('large_files').doc(fileId).set({
+    await batch.commit();
+
+    await _firestore.collection('large_files').doc(fileId).set({
       'fileName': fileName,
-      'chunkIds': chunks,
-      'totalSize': bytes.length,
+      'totalChunks': totalChunks,
       'createdAt': FieldValue.serverTimestamp(),
     });
+
     return fileId;
   }
 
-  Future<Uint8List> downloadLargeFile(String fileId) async {
-    final doc = await firestore.collection('large_files').doc(fileId).get();
-    if (!doc.exists) throw Exception('File not found');
-    final chunkIds = List<String>.from(doc['chunkIds']);
-    final buffer = StringBuffer();
-    for (final chunkId in chunkIds) {
-      final chunkDoc =
-          await firestore.collection('file_chunks').doc(chunkId).get();
-      buffer.write(chunkDoc['data']);
+  Future<List<int>> downloadLargeFile(String fileId) async {
+    final chunksSnapshot = await _firestore
+        .collection('file_chunks')
+        .doc(fileId)
+        .collection('chunks')
+        .orderBy('index')
+        .get();
+
+    final List<int> allBytes = [];
+    for (var doc in chunksSnapshot.docs) {
+      final hex = doc['hex'] as String;
+      allBytes.addAll(_hexToBytes(hex));
     }
-    return base64Decode(buffer.toString());
+    return allBytes;
+  }
+
+  String _generateFileId() {
+    return DateTime.now().millisecondsSinceEpoch.toString() +
+        '_' +
+        (DateTime.now().microsecondsSinceEpoch % 1000).toString();
+  }
+
+  String _bytesToHex(List<int> bytes) {
+    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  List<int> _hexToBytes(String hex) {
+    final List<int> bytes = [];
+    for (int i = 0; i < hex.length; i += 2) {
+      bytes.add(int.parse(hex.substring(i, i + 2), radix: 16));
+    }
+    return bytes;
   }
 }
