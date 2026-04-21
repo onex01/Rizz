@@ -1,4 +1,5 @@
 // lib/core/di/service_locator.dart
+import 'package:Rizz/shared/services/audio_player_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -32,7 +33,7 @@ Future<void> setupServiceLocator() async {
   final prefs = await SharedPreferences.getInstance();
   sl.registerSingleton<SharedPreferences>(prefs);
   sl.registerSingleton<FirebaseAuth>(FirebaseAuth.instance);
-  
+  sl.registerLazySingleton<AudioPlayerService>(() => AudioPlayerService());
   // ВАЖНО: FirebaseFirestore.instance используется БЕЗ скобок ()
   sl.registerSingleton<FirebaseFirestore>(FirebaseFirestore.instance);
   sl.registerSingleton<FirebaseStorage>(FirebaseStorage.instance);

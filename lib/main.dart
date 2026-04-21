@@ -19,50 +19,48 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // Регистрируем все сервисы
   await setupServiceLocator();
 
   final logger = GetIt.I<AppLogger>();
   await logger.init();
 
+  // === ИНИЦИАЛИЗАЦИЯ АУДИО — САМАЯ ВАЖНАЯ ЧАСТЬ ===
+  try {
+    final audioService = GetIt.I<AudioPlayerService>();
+    await audioService.init();
+    logger.info('✅ AudioPlayerService initialized successfully');
+  } catch (e, stack) {
+    logger.error('❌ Failed to init AudioPlayerService', error: e, stack: stack);
+    // Не крашим приложение, если аудио не инициализировалось
+  }
+
+  // Deep links
   final appLinks = AppLinks();
   appLinks.uriLinkStream.listen((uri) {
     if (uri.scheme == 'rizz' && uri.host == 'profile') {
-      uri.pathSegments.first.replaceFirst('@', '');
-      // Навигация к профилю пользователя по username
-      // (предварительно найти uid по username)
+      // обработка профиля
     }
   });
 
-  // Глобальный перехват ошибок Flutter
+  // Глобальные обработчики ошибок
   FlutterError.onError = (details) {
-    logger.error(
-      'Flutter error: ${details.exception}',
-      error: details.exception,
-      stack: details.stack,
-    );
+    logger.error('Flutter error', error: details.exception, stack: details.stack);
     if (kDebugMode) FlutterError.dumpErrorToConsole(details);
   };
 
-  // Перехват необработанных асинхронных ошибок
   PlatformDispatcher.instance.onError = (error, stack) {
-    // Выводим в консоль для немедленной видимости при отладке
-    debugPrint('!!! PlatformDispatcher caught error: $error');
-    debugPrint('$stack');
+    debugPrint('!!! Uncaught async error: $error');
     logger.error('Uncaught async error', error: error, stack: stack);
     return true;
   };
 
-  // Инициализация уведомлений
+  // Уведомления и слушатель сообщений
   final notificationService = GetIt.I<NotificationService>();
   await notificationService.initialize();
-
-  // Запуск слушателя сообщений для фоновых уведомлений
+ 
   final messageListener = GetIt.I<MessageListenerService>();
   messageListener.startListening();
-
-  // В вашем initServices()
-GetIt.I.registerSingleton<AudioPlayerService>(AudioPlayerService());
-await GetIt.I<AudioPlayerService>().init();   // ← обязательно!
-
+ 
   runApp(const RizzApp());
 }

@@ -2,12 +2,15 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../shared/services/firestore_service.dart';
 import '../../../shared/services/file_converter_service.dart';
+import '../../../shared/services/chunked_file_service.dart';
+import '../../../shared/services/audio_player_service.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -20,6 +23,8 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _user = FirebaseAuth.instance.currentUser!;
   final _firestoreService = GetIt.I<FirestoreService>();
+  final _chunkedFileService = GetIt.I<ChunkedFileService>();
+  final _audioPlayerService = GetIt.I<AudioPlayerService>();
   final _logger = GetIt.I<AppLogger>();
 
   String? _nickname;
@@ -27,8 +32,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _phoneNumber;
   String? _bio;
   bool _isLoading = true;
+
+  // Данные закреплённой песни
   String? _pinnedSongTitle;
   String? _pinnedSongArtist;
+  String? _pinnedSongLargeFileId;   // ← Добавлено
+
+  bool _isPlayingPinnedSong = false;
 
   @override
   void initState() {
@@ -48,8 +58,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _avatarHex = data['avatarHex'];
           _phoneNumber = data['phoneNumber'];
           _bio = data['bio'] ?? 'Привет! Я использую Rizz';
+
           _pinnedSongTitle = pinnedSong['title'];
           _pinnedSongArtist = pinnedSong['artist'];
+          _pinnedSongLargeFileId = pinnedSong['largeFileId'];
+
           _isLoading = false;
         });
       } else {
@@ -61,12 +74,59 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // ==================== ВОСПРОИЗВЕДЕНИЕ ЗАКРЕПЛЁННОЙ ПЕСНИ =================== 
+Future<void> _playPinnedSong() async {
+  if (_pinnedSongLargeFileId == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Музыка ещё не загружена')),
+    );
+    return;
+  }
+
+  setState(() => _isPlayingPinnedSong = true);
+
+  try {
+    final bytes = await _chunkedFileService.downloadLargeFile(_pinnedSongLargeFileId!);
+    if (bytes.isEmpty) throw Exception("Файл пуст");
+
+    final tempDir = await getTemporaryDirectory();
+
+    // Берём оригинальное имя файла из Firestore (если есть) или делаем надёжное имя
+    final safeFileName = '${DateTime.now().millisecondsSinceEpoch}_pinned_song.mp3';
+    final tempPath = '${tempDir.path}/$safeFileName';
+    final tempFile = File(tempPath);
+
+    await tempFile.writeAsBytes(bytes, flush: true); // flush — критично!
+
+    if (await tempFile.exists()) {
+      _logger.info('▶️ Playing pinned song: ${tempFile.path}');
+
+      await _audioPlayerService.playVoice(
+        tempFile.path,
+        title: _pinnedSongTitle ?? 'Закреплённая песня',
+        artist: _pinnedSongArtist ?? 'Rizz App',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('▶️ ${_pinnedSongTitle ?? "Песня"}')),
+      );
+    }
+  } catch (e, stack) {
+    _logger.error('Failed to play pinned song', error: e, stack: stack);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ошибка воспроизведения: ${e.toString()}')),
+    );
+  } finally {
+    if (mounted) setState(() => _isPlayingPinnedSong = false);
+  }
+}
+
   Widget _buildAvatar() {
     if (_avatarHex != null && _avatarHex!.isNotEmpty) {
       return FutureBuilder<File?>(
         future: FileConverterService.hexToFile(_avatarHex!, 'avatar_${_user.uid}.jpg'),
         builder: (context, snapshot) {
-          if (snapshot.hasData) {
+          if (snapshot.hasData && snapshot.data != null) {
             return CircleAvatar(
               radius: 60,
               backgroundImage: FileImage(snapshot.data!),
@@ -149,6 +209,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 4),
                   Text(_user.email ?? '', style: TextStyle(fontSize: 14, color: isLight ? Colors.grey.shade600 : Colors.grey.shade400)),
                   const SizedBox(height: 24),
+
                   if (_bio != null && _bio!.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -162,7 +223,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     ),
+
                   const SizedBox(height: 24),
+
+                  // ==================== КАРТОЧКА С МУЗЫКОЙ ====================
+                  if (_pinnedSongTitle != null && _pinnedSongTitle!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Card(
+                        elevation: 0,
+                        color: isLight ? Colors.grey.shade100 : Colors.grey.shade900,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          leading: const Icon(Icons.music_note, color: Colors.deepPurple, size: 32),
+                          title: Text(
+                            _pinnedSongTitle!,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(_pinnedSongArtist ?? ''),
+                          trailing: _isPlayingPinnedSong
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.play_circle_fill, color: Colors.deepPurple, size: 32),
+                          onTap: _playPinnedSong,
+                        ),
+                      ),
+                    ),
+
                   Container(
                     margin: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
@@ -176,7 +266,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           title: Text('Телефон', style: TextStyle(color: isLight ? Colors.black87 : Colors.white70)),
                           subtitle: Text(_phoneNumber ?? 'Не указан', style: TextStyle(color: isLight ? Colors.grey.shade600 : Colors.grey.shade500)),
                         ),
-                        Divider(height: 1, color: isLight ? Colors.grey.shade200 : Colors.grey.shade800),
+                        const Divider(height: 1),
                         ListTile(
                           leading: Icon(Icons.qr_code, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
                           title: Text('QR-код', style: TextStyle(color: isLight ? Colors.black87 : Colors.white70)),
@@ -184,27 +274,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           trailing: const Icon(Icons.chevron_right),
                           onTap: _showQrCode,
                         ),
-                                          if (_pinnedSongTitle != null && _pinnedSongTitle!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Card(
-                        elevation: 0,
-                        color: isLight ? Colors.grey.shade100 : Colors.grey.shade900,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        child: ListTile(
-                          leading: const Icon(Icons.music_note, color: Colors.deepPurple),
-                          title: Text(_pinnedSongTitle!),
-                          subtitle: Text(_pinnedSongArtist ?? ''),
-                          trailing: const Icon(Icons.play_circle_fill, color: Colors.deepPurple),
-                          onTap: () {
-                            // TODO: Запуск глобального плеера (будет в AudioPlayerService)
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('▶️ Играет: $_pinnedSongTitle')),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
                       ],
                     ),
                   ),

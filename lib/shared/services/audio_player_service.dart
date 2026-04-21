@@ -1,130 +1,66 @@
-import 'dart:io';
-import 'dart:ui';
+import 'dart:ui'; 
+import 'package:audio_session/audio_session.dart'; 
 import 'package:get_it/get_it.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
-import 'package:rxdart/rxdart.dart';
-
-import '../../core/logger/app_logger.dart';
+import '../../core/logger/app_logger.dart'; 
 
 class AudioPlayerService {
   static AudioPlayerService get I => GetIt.I<AudioPlayerService>();
 
-  final _audioPlayer = AudioPlayer();
+  final AudioPlayer _player = AudioPlayer();
   final _logger = GetIt.I<AppLogger>();
 
-  // Стримы для UI
-  Stream<bool> get isPlayingStream => _audioPlayer.playingStream;
-  Stream<Duration> get positionStream => _audioPlayer.positionStream;
-  Stream<Duration?> get durationStream => _audioPlayer.durationStream;
-  Stream<MediaItem?> get currentMediaItemStream => _audioPlayer.sequenceStateStream
-      .map((state) => state.currentSource?.tag as MediaItem?);
-
-  final _currentTitle = BehaviorSubject<String?>();
-  Stream<String?> get currentTitleStream => _currentTitle.stream;
+  Stream<bool> get isPlayingStream => _player.playingStream;
+  Stream<Duration> get positionStream => _player.positionStream;
+  Stream<Duration?> get durationStream => _player.durationStream;
 
   bool _initialized = false;
-
-  /// Инициализация (вызвать один раз в main.dart)
+ 
   Future<void> init() async {
     if (_initialized) return;
 
     try {
-      // Настройка фона и уведомления
+      // Критично: используем dedicated drawable иконку (решает "no valid small icon")
       await JustAudioBackground.init(
         androidNotificationChannelId: 'com.rizz.app.audio',
-        androidNotificationChannelName: 'Воспроизведение аудио',
+        androidNotificationChannelName: 'Rizz Playback',
         androidNotificationOngoing: true,
-        androidShowNotificationBadge: true,
-        notificationColor: const Color(0xFF6B46C2), // deepPurple
-        artDownscaleWidth: 512,
-        preloadArtwork: true,
-        fastForwardInterval: const Duration(seconds: 10),
-        rewindInterval: const Duration(seconds: 10),
+        notificationColor: const Color(0xFF6B46C2),
+        androidNotificationIcon: 'drawable/ic_stat_audio',   // ← ЭТО ИСПРАВЛЯЕТ КРАШ
       );
 
-      // Обработка завершения трека
-      _audioPlayer.processingStateStream.listen((state) {
-        if (state == ProcessingState.completed) {
-          _audioPlayer.stop();
-          _currentTitle.add(null);
-        }
-      });
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
 
-      _logger.info('AudioPlayerService initialized');
       _initialized = true;
-    } catch (e, stack) {
-      _logger.error('Failed to init AudioPlayerService', error: e, stack: stack);
+      _logger.info('AudioPlayerService initialized with valid notification icon');
+    } catch (e) {
+      _logger.error('Failed to init audio', error: e);
     }
   }
 
-  /// Воспроизведение песни из профиля (URL)
-  Future<void> playUrl(
-    String url, {
-    required String title,
-    String? artist,
-    String? albumArtUrl,
-  }) async {
+  /// Главный метод: играет файл и вешает его в шторку
+  Future<void> playVoice(String filePath, {String? title, String? artist}) async {
     try {
-      final mediaItem = MediaItem(
-        id: url,
-        title: title,
-        artist: artist ?? 'Rizz',
-        artUri: albumArtUrl != null ? Uri.parse(albumArtUrl) : null,
-      );
-
-      await _audioPlayer.setAudioSource(
-        AudioSource.uri(Uri.parse(url), tag: mediaItem),
-      );
-
-      _currentTitle.add(title);
-      await _audioPlayer.play();
-    } catch (e, stack) {
-      _logger.error('playUrl failed', error: e, stack: stack);
-    }
-  }
-
-  /// Воспроизведение голосового сообщения (локальный файл)
-  Future<void> playVoice(String filePath, {String? title}) async {
-    try {
-      final file = File(filePath);
-      if (!await file.exists()) {
-        _logger.warning('Voice file not found: $filePath');
-        return;
-      }
-
       final mediaItem = MediaItem(
         id: filePath,
-        title: title ?? 'Голосовое сообщение',
-        artist: 'Rizz',
+        title: title ?? 'Закреплённый трек',
+        artist: artist ?? 'Rizz App',
       );
 
-      await _audioPlayer.setAudioSource(
+      await _player.setAudioSource(
         AudioSource.file(filePath, tag: mediaItem),
       );
 
-      _currentTitle.add(title ?? 'Голосовое');
-      await _audioPlayer.play();
-    } catch (e, stack) {
-      _logger.error('playVoice failed', error: e, stack: stack);
+      await _player.play();
+    } catch (e) {
+      _logger.error('Playback error', error: e);
     }
   }
 
-  Future<void> pause() => _audioPlayer.pause();
-  Future<void> resume() => _audioPlayer.play();
-  Future<void> stop() async {
-    await _audioPlayer.stop();
-    _currentTitle.add(null);
-  }
-
-  Future<void> seek(Duration position) => _audioPlayer.seek(position);
-
-  /// Текущая позиция (для прогресс-бара)
-  Duration get currentPosition => _audioPlayer.position;
-  Duration? get totalDuration => _audioPlayer.duration;
-
-  Future<void> dispose() async {
-    await _audioPlayer.dispose();
-    await _currentTitle.close();
-  }
+  Future<void> pause() => _player.pause();
+  Future<void> resume() => _player.play();
+  Future<void> stop() => _player.stop();
+  Future<void> seek(Duration pos) => _player.seek(pos);
 }

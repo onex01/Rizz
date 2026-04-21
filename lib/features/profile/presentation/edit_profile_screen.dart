@@ -118,47 +118,74 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() => _saving = false);
     }
   }
-
   // ==================== ЗАГРУЗКА МУЗЫКИ В HEX ====================
-  Future<void> _pickAndUploadPinnedSong() async {
-    try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.audio,
-        allowedExtensions: ['mp3', 'm4a', 'wav', 'aac', 'ogg'],
-      );
+// ==================== ЗАГРУЗКА МУЗЫКИ В HEX ====================
+Future<void> _pickAndUploadPinnedSong() async {
+  try {
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,                    // ← Изменено с audio на custom
+      allowedExtensions: ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'flac'], // добавил flac на всякий случай
+      allowMultiple: false,
+    );
 
-      if (result == null || result.files.isEmpty) return;
-
-      final file = File(result.files.first.path!);
-      final fileName = result.files.first.name;
-
-      setState(() => _saving = true);
-
-      final bytes = await file.readAsBytes();
-      final largeFileId = await _chunkedFileService.uploadLargeFile(bytes, fileName);
-
-      final pinnedSong = {
-        'title': _songTitleController.text.trim().isNotEmpty 
-            ? _songTitleController.text.trim() 
-            : 'Без названия',
-        'artist': _songArtistController.text.trim().isNotEmpty 
-            ? _songArtistController.text.trim() 
-            : 'Исполнитель',
-        'largeFileId': largeFileId,
-        'fileName': fileName,
-      };
-
-      await _firestoreService.updateUser(_user.uid, {'pinnedSong': pinnedSong});
-
-      setState(() => _pinnedSongLargeFileId = largeFileId);
-      Fluttertoast.showToast(msg: "✅ Музыка успешно закреплена (HEX + чанки)");
-    } catch (e, stack) {
-      _logger.error('Failed to upload pinned song as HEX', error: e, stack: stack);
-      Fluttertoast.showToast(msg: "Ошибка загрузки трека");
-    } finally {
-      setState(() => _saving = false);
+    if (result == null || result.files.isEmpty) {
+      return;
     }
+
+    final platformFile = result.files.first;
+    if (platformFile.path == null) {
+      Fluttertoast.showToast(msg: "Не удалось получить путь к файлу");
+      return;
+    }
+
+    final file = File(platformFile.path!);
+    final fileName = platformFile.name;
+
+    // Дополнительная проверка расширения (на всякий случай)
+    final extension = fileName.split('.').last.toLowerCase();
+    if (!['mp3', 'm4a', 'wav', 'aac', 'ogg', 'flac', 'opus'].contains(extension)) {
+      Fluttertoast.showToast(msg: "Поддерживаются только аудиофайлы: mp3, m4a, wav, aac, ogg");
+      return;
+    }
+
+    final fileSize = await file.length();
+    if (fileSize == 0) {
+      Fluttertoast.showToast(msg: "Файл пустой");
+      return;
+    }
+    if (fileSize > 50 * 1024 * 1024) { // ограничим 50 МБ для разумности
+      Fluttertoast.showToast(msg: "Файл слишком большой (макс. 50 МБ)");
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    final bytes = await file.readAsBytes();
+    final largeFileId = await _chunkedFileService.uploadLargeFile(bytes, fileName);
+
+    final pinnedSong = {
+      'title': _songTitleController.text.trim().isNotEmpty 
+          ? _songTitleController.text.trim() 
+          : 'Без названия',
+      'artist': _songArtistController.text.trim().isNotEmpty 
+          ? _songArtistController.text.trim() 
+          : 'Исполнитель',
+      'largeFileId': largeFileId,
+      'fileName': fileName,
+      'uploadedAt': DateTime.now().toIso8601String(),
+    };
+
+    await _firestoreService.updateUser(_user.uid, {'pinnedSong': pinnedSong});
+
+    setState(() => _pinnedSongLargeFileId = largeFileId);
+    Fluttertoast.showToast(msg: "✅ Музыка успешно закреплена (HEX + чанки)");
+  } catch (e, stack) {
+    _logger.error('Failed to upload pinned song as HEX', error: e, stack: stack);
+    Fluttertoast.showToast(msg: "Ошибка загрузки трека.\n${e.toString().length > 100 ? e.toString().substring(0, 100) + '...' : e}");
+  } finally {
+    if (mounted) setState(() => _saving = false);
   }
+}
 
   Future<void> _pickAndUploadAvatar() async {
     final picker = ImagePicker();

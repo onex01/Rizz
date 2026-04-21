@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:Rizz/shared/services/audio_player_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:get_it/get_it.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:video_player/video_player.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -543,46 +545,77 @@ class _FullScreenCircleVideoState extends State<_FullScreenCircleVideo> {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }// Полноэкранный просмотр кружка
 
-  class _VoicePlayerWidget extends StatefulWidget {
+class _VoicePlayerWidget extends StatefulWidget {
   final File file;
   final bool isMe;
   final String time;
   final double fontSize;
-  const _VoicePlayerWidget({required this.file, required this.isMe, required this.time, required this.fontSize});
+
+  const _VoicePlayerWidget({
+    required this.file,
+    required this.isMe,
+    required this.time,
+    required this.fontSize,
+  });
 
   @override
   State<_VoicePlayerWidget> createState() => _VoicePlayerWidgetState();
-}
-
+} 
 
 class _VoicePlayerWidgetState extends State<_VoicePlayerWidget> {
-  late AudioPlayer _player;
+  final _service = GetIt.I<AudioPlayerService>();
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
+  late StreamSubscription<bool> _playingSub;
+  late StreamSubscription<Duration> _positionSub;
+  late StreamSubscription<Duration?> _durationSub;
+
   @override
   void initState() {
     super.initState();
-    _player = AudioPlayer();
-    _player.onDurationChanged.listen((d) => setState(() => _duration = d));
-    _player.onPositionChanged.listen((p) => setState(() => _position = p));
-    _player.onPlayerComplete.listen((_) => setState(() => _isPlaying = false));
-    _loadFile();
+    _loadStreams();
   }
 
-  Future<void> _loadFile() async {
-    await _player.setSourceDeviceFile(widget.file.path);
+  void _loadStreams() {
+    _playingSub = _service.isPlayingStream.listen((playing) {
+      if (mounted) setState(() => _isPlaying = playing);
+    });
+    _positionSub = _service.positionStream.listen((pos) {
+      if (mounted) setState(() => _position = pos);
+    });
+    _durationSub = _service.durationStream.listen((dur) {
+      if (mounted) setState(() => _duration = dur ?? Duration.zero);
+    });
+  }
+
+  Future<void> _togglePlay() async {
+    if (_isPlaying) {
+      await _service.pause();
+    } else {
+      await _service.playVoice(
+        widget.file.path,
+        title: 'Голосовое сообщение',
+      );
+    }
   }
 
   @override
   void dispose() {
-    _player.dispose();
+    _playingSub.cancel();
+    _positionSub.cancel();
+    _durationSub.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final positionText = '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}';
+    final durationText = _duration != Duration.zero
+        ? '${_duration.inMinutes}:${(_duration.inSeconds % 60).toString().padLeft(2, '0')}'
+        : '0:00';
+
     return Align(
       alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -596,18 +629,18 @@ class _VoicePlayerWidgetState extends State<_VoicePlayerWidget> {
           children: [
             IconButton(
               icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
-              onPressed: () {
-                setState(() => _isPlaying = !_isPlaying);
-                _isPlaying ? _player.resume() : _player.pause();
-              },
+              onPressed: _togglePlay,
             ),
             const SizedBox(width: 8),
             Text(
-              '${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')} / ${_duration.inMinutes}:${(_duration.inSeconds % 60).toString().padLeft(2, '0')}',
+              '$positionText / $durationText',
               style: TextStyle(fontSize: widget.fontSize - 2),
             ),
             const SizedBox(width: 8),
-            Text(widget.time, style: TextStyle(fontSize: widget.fontSize - 4, color: Colors.grey)),
+            Text(
+              widget.time,
+              style: TextStyle(fontSize: widget.fontSize - 4, color: Colors.grey),
+            ),
           ],
         ),
       ),

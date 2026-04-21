@@ -1,15 +1,13 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:record/record.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:record/record.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'file_converter_service.dart';
-// import 'message_service.dart';
-
-
+ 
 class VoiceService {
   static final AudioRecorder _recorder = AudioRecorder();
   static String? _recordingPath;
@@ -62,20 +60,29 @@ class VoiceService {
         });
   }
 
+  /// Надёжное получение длительности голосового (исправлено)
   static Future<int> _getDuration(File file) async {
     final player = AudioPlayer();
     try {
-      await player.setSourceDeviceFile(file.path);
-      final duration = await player.getDuration();
-      if (duration != null) {
+      await player.setAudioSource(AudioSource.file(file.path));
+
+      // Правильный способ в just_audio: ждём первый ненулевой duration из стрима
+      final duration = await player.durationStream
+          .firstWhere((d) => d != null)
+          .timeout(
+            const Duration(seconds: 3),
+            onTimeout: () => null,
+          );
+
+      if (duration != null && duration.inSeconds > 0) {
         return duration.inSeconds;
       }
     } catch (e) {
-      debugPrint('Error getting duration: $e');
+      debugPrint('Error getting voice duration: $e');
     } finally {
       await player.dispose();
     }
-    return 0;
+    return 0; // fallback
   }
 }
 

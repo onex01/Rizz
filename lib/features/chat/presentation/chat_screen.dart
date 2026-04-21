@@ -92,10 +92,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     _audioPlayerService.durationStream.listen((dur) {
       if (mounted) setState(() => _totalDuration = dur ?? Duration.zero);
     });
-    _audioPlayerService.currentTitleStream.listen((title) {
-      if (mounted) setState(() => _nowPlayingTitle = title);
-    });
-
+ 
     _scrollController.addListener(() {
       if (_scrollController.offset > 300 && !_showScrollToBottom) {
         setState(() => _showScrollToBottom = true);
@@ -349,38 +346,39 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _playOtherUserSong() async {
-    if (_otherPinnedSongLargeFileId == null) {
-      _showToast('Песня пока не доступна');
-      return;
-    }
-
-    setState(() {
-      _nowPlayingTitle = _otherPinnedSongTitle;
-      _nowPlayingArtist = _otherPinnedSongArtist;
-      _isPlayerVisible = true;
-      _isPlaying = true;
-    });
-
-    try {
-      // 1. Скачиваем все HEX-чанки из Firestore
-      final bytes = await _chunkedFileService.downloadLargeFile(_otherPinnedSongLargeFileId!);
-
-      // 2. Сохраняем во временный файл
-      final tempDir = Directory.systemTemp;
-      final tempFile = File('${tempDir.path}/pinned_song_${DateTime.now().millisecondsSinceEpoch}.mp3');
-      await tempFile.writeAsBytes(bytes, flush: true);
-
-      // 3. Воспроизводим через нативный Android-плеер (just_audio)
-      await _audioPlayerService.playVoice(
-        tempFile.path,
-        title: _otherPinnedSongTitle ?? 'Песня',
-      );
-    } catch (e, stack) {
-      _logger.error('Failed to play pinned song from HEX chunks', error: e, stack: stack);
-      _showToast('Ошибка загрузки трека');
-      setState(() => _isPlayerVisible = false);
-    }
+  if (_otherPinnedSongLargeFileId == null) {
+    _showToast('Песня пока не доступна');
+    return;
   }
+
+  setState(() {
+    _nowPlayingTitle = _otherPinnedSongTitle;
+    _nowPlayingArtist = _otherPinnedSongArtist;
+    _isPlayerVisible = true;
+    _isPlaying = true;
+  });
+
+  try {
+    final bytes = await _chunkedFileService.downloadLargeFile(_otherPinnedSongLargeFileId!);
+    if (bytes.isEmpty) throw Exception("Файл пуст");
+
+    final tempDir = Directory.systemTemp;
+    final safeFileName = 'pinned_song_${DateTime.now().millisecondsSinceEpoch}.mp3';
+    final tempFile = File('${tempDir.path}/$safeFileName');
+
+    await tempFile.writeAsBytes(bytes, flush: true);
+
+    await _audioPlayerService.playVoice(
+      tempFile.path,
+      title: _otherPinnedSongTitle ?? 'Песня',
+      artist: _otherPinnedSongArtist,
+    );
+  } catch (e, stack) {
+    _logger.error('Failed to play pinned song from HEX chunks', error: e, stack: stack);
+    _showToast('Ошибка загрузки трека');
+    setState(() => _isPlayerVisible = false);
+  }
+}
 
   Future<void> _sendMediaMessage({
     required File file,
@@ -785,7 +783,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
 
           // 2. Плавающая кнопка "Вниз"
           Positioned(
-            bottom: 72,
+            bottom: 150,
             right: 16,
             child: AnimatedScale(
               scale: _showScrollToBottom ? 1.0 : 0.0,

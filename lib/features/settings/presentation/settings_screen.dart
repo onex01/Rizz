@@ -77,7 +77,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             foregroundColor: isLight ? Colors.black : null,
             floating: false,
             pinned: true,
-            snap: true,
+            snap: false,
           ),
           SliverToBoxAdapter(
             child: Column(
