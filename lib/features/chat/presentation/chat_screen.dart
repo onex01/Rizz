@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 import 'package:Rizz/shared/services/audio_player_service.dart';
+import 'package:Rizz/shared/services/file_converter_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
@@ -21,6 +22,7 @@ import '../data/chat_repository.dart';
 import '../domain/message.dart';
 import '../widgets/message_list.dart';
 import '../widgets/chat_background.dart';
+import '../widgets/chat_input_bar.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -37,6 +39,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final GlobalKey _textFieldKey = GlobalKey();
+  File? _otherUserAvatarFile;
 
   // Инжектированные зависимости
   final _audioPlayerService = GetIt.I<AudioPlayerService>();
@@ -46,8 +49,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   final _chunkedFileService = GetIt.I<ChunkedFileService>();
 
   String? _otherUserNickname;
-  String? _otherUserPhotoUrl;
-  bool? _isOnlineInChat;
+  bool? _isOnlineInChat; 
   DateTime? _lastSeen;
   bool _isTyping = false;
   StreamSubscription? _chatStatusSubscription;
@@ -58,9 +60,9 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   String? _otherPinnedSongTitle;
   String? _otherPinnedSongArtist;
   String? _otherPinnedSongDuration;
-  String? _otherPinnedSongUrl;   // для плеера
+  String? _otherPinnedSongLargeFileId;
 
-  // === ГЛОБАЛЬНЫЙ ПЛЕЕР (пункты 7 и 8) ===
+  // === ГЛОБАЛЬНЫЙ ПЛЕЕР ===
   bool _isPlayerVisible = false;
   String? _nowPlayingTitle;
   String? _nowPlayingArtist;
@@ -68,7 +70,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
 
-    String _formatDuration(Duration duration) {
+  String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$minutes:$seconds';
@@ -82,17 +84,17 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     _joinChat();
 
     _audioPlayerService.isPlayingStream.listen((playing) {
-  if (mounted) setState(() => _isPlaying = playing);
-});
-_audioPlayerService.positionStream.listen((pos) {
-  if (mounted) setState(() => _currentPosition = pos);
-});
-_audioPlayerService.durationStream.listen((dur) {
-  if (mounted) setState(() => _totalDuration = dur ?? Duration.zero);
-});
-_audioPlayerService.currentTitleStream.listen((title) {
-  if (mounted) setState(() => _nowPlayingTitle = title);
-});
+      if (mounted) setState(() => _isPlaying = playing);
+    });
+    _audioPlayerService.positionStream.listen((pos) {
+      if (mounted) setState(() => _currentPosition = pos);
+    });
+    _audioPlayerService.durationStream.listen((dur) {
+      if (mounted) setState(() => _totalDuration = dur ?? Duration.zero);
+    });
+    _audioPlayerService.currentTitleStream.listen((title) {
+      if (mounted) setState(() => _nowPlayingTitle = title);
+    });
 
     _scrollController.addListener(() {
       if (_scrollController.offset > 300 && !_showScrollToBottom) {
@@ -103,7 +105,7 @@ _audioPlayerService.currentTitleStream.listen((title) {
     });
   }
 
-    Future<void> _loadOtherUserInfo() async {
+  Future<void> _loadOtherUserInfo() async {
     if (widget.otherUserId == _currentUser.uid) {
       setState(() => _otherUserNickname = 'Заметки');
       return;
@@ -115,14 +117,32 @@ _audioPlayerService.currentTitleStream.listen((title) {
 
       final data = doc.data() as Map<String, dynamic>;
       final pinnedSong = data['pinnedSong'] as Map<String, dynamic>? ?? {};
+      final avatarHex = data['avatarHex'] as String?;
+
+      File? avatarFile;
+      if (avatarHex != null && avatarHex.isNotEmpty) {
+        try {
+          avatarFile = await FileConverterService.hexToFile(
+            avatarHex,
+            'avatar_${widget.otherUserId}.jpg',
+          );
+          if (await avatarFile.length() == 0) {
+            await avatarFile.delete();
+            avatarFile = null;
+          }
+        } catch (e, stack) {
+          _logger.error('Failed to convert avatar hex to file', error: e, stack: stack);
+          avatarFile = null;
+        }
+      }
 
       setState(() {
         _otherUserNickname = data['nickname'] ?? widget.otherUserId;
-        _otherUserPhotoUrl = data['photoUrl'];
+        _otherUserAvatarFile = avatarFile;
         _otherPinnedSongTitle = pinnedSong['title'];
         _otherPinnedSongArtist = pinnedSong['artist'];
         _otherPinnedSongDuration = pinnedSong['duration'] ?? '3:45';
-        _otherPinnedSongUrl = pinnedSong['audioUrl']; // если есть
+        _otherPinnedSongLargeFileId = pinnedSong['largeFileId'];
       });
     } catch (e, stack) {
       _logger.error('Failed to load other user info', error: e, stack: stack);
@@ -211,13 +231,13 @@ _audioPlayerService.currentTitleStream.listen((title) {
           onEnd: () => entry.remove(),
           builder: (context, value, child) {
             return Positioned(
-              left: offset.dx + 40, // Сдвиг от скрепки
-              top: offset.dy - (value * 120), // Вылет вверх
+              left: offset.dx + 40,
+              top: offset.dy - (value * 120),
               width: width * 0.75,
               child: Opacity(
-                opacity: 1.0 - value, // Плавное исчезновение
+                opacity: 1.0 - value,
                 child: Transform.scale(
-                  scale: 1.0 - (value * 0.1), // Легкое уменьшение
+                  scale: 1.0 - (value * 0.1),
                   child: Material(
                     color: Colors.transparent,
                     child: Align(
@@ -245,7 +265,7 @@ _audioPlayerService.currentTitleStream.listen((title) {
     );
     Overlay.of(context).insert(entry);
   }
-  // ==================== ИСПРАВЛЕННЫЙ _sendMessage() с Telegram-анимацией ====================
+
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
@@ -254,11 +274,10 @@ _audioPlayerService.currentTitleStream.listen((title) {
       'typingUsers': FieldValue.arrayRemove([_currentUser.uid])
     });
 
-    HapticFeedback.lightImpact(); // Нативный тактильный отклик
+    HapticFeedback.lightImpact();
 
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-    
-    // Запускаем красивую анимацию
+     
     _playSendAnimation(text, settings.accentColor);
 
     final message = Message(
@@ -305,19 +324,17 @@ _audioPlayerService.currentTitleStream.listen((title) {
   }
 
   Future<void> _sendFile() async {
-  // Changed from FilePicker.platform.pickFiles()
-  final FilePickerResult? result = await FilePicker.pickFiles();
+    final FilePickerResult? result = await FilePicker.pickFiles();
+    if (result == null || result.files.isEmpty) return;
 
-  if (result == null || result.files.isEmpty) return;
-
-  final file = File(result.files.first.path!);
-  
-  await _sendMediaMessage(
-    file: file,
-    type: 'file_hex',
-    previewText: '📎 ${file.path.split('/').last}',
-  );
-}
+    final file = File(result.files.first.path!);
+    
+    await _sendMediaMessage(
+      file: file,
+      type: 'file_hex',
+      previewText: '📎 ${file.path.split('/').last}',
+    );
+  }
 
   Future<void> _takePhoto() async {
     final picker = ImagePicker();
@@ -331,9 +348,9 @@ _audioPlayerService.currentTitleStream.listen((title) {
     );
   }
 
-    Future<void> _playOtherUserSong() async {
-    if (_otherPinnedSongUrl == null) {
-      _showToast('Песня пока не доступна для прослушивания');
+  Future<void> _playOtherUserSong() async {
+    if (_otherPinnedSongLargeFileId == null) {
+      _showToast('Песня пока не доступна');
       return;
     }
 
@@ -344,11 +361,25 @@ _audioPlayerService.currentTitleStream.listen((title) {
       _isPlaying = true;
     });
 
-    await _audioPlayerService.playUrl(
-  _otherPinnedSongUrl!,
-  title: _otherPinnedSongTitle!,
-  artist: _otherPinnedSongArtist,
-);
+    try {
+      // 1. Скачиваем все HEX-чанки из Firestore
+      final bytes = await _chunkedFileService.downloadLargeFile(_otherPinnedSongLargeFileId!);
+
+      // 2. Сохраняем во временный файл
+      final tempDir = Directory.systemTemp;
+      final tempFile = File('${tempDir.path}/pinned_song_${DateTime.now().millisecondsSinceEpoch}.mp3');
+      await tempFile.writeAsBytes(bytes, flush: true);
+
+      // 3. Воспроизводим через нативный Android-плеер (just_audio)
+      await _audioPlayerService.playVoice(
+        tempFile.path,
+        title: _otherPinnedSongTitle ?? 'Песня',
+      );
+    } catch (e, stack) {
+      _logger.error('Failed to play pinned song from HEX chunks', error: e, stack: stack);
+      _showToast('Ошибка загрузки трека');
+      setState(() => _isPlayerVisible = false);
+    }
   }
 
   Future<void> _sendMediaMessage({
@@ -360,8 +391,7 @@ _audioPlayerService.currentTitleStream.listen((title) {
       final fileSize = await file.length();
       final fileName = file.path.split('/').last;
       final fileExtension = fileName.split('.').last;
-
-      // Проверка размера: если > 500 KB, используем чанки
+ 
       if (fileSize > 500 * 1024) {
         await _sendLargeFile(file, fileName, fileSize, previewText);
         return;
@@ -435,21 +465,18 @@ _audioPlayerService.currentTitleStream.listen((title) {
       _showToast('Ошибка отправки большого файла');
     }
   }
-
-  // Вспомогательная функция для конвертации байт в hex
+ 
   String _bytesToHex(List<int> bytes) {
     return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
- 
-  // ==================== ГОЛОСОВЫЕ И ВИДЕОКРУЖКИ ====================
+
   Future<void> _startVoiceRecording() async {
     await VoiceService.startRecording();
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => VoiceRecorderDialog(
-        onSend: (File file) async {
-          // Отправка голосового через hex
+        onSend: (File file) async { 
           await _sendMediaMessage(
             file: file,
             type: 'voice',
@@ -458,8 +485,8 @@ _audioPlayerService.currentTitleStream.listen((title) {
         },
       ),
     );
-  } 
-  // ==================== ДЕЙСТВИЯ С СООБЩЕНИЯМИ ====================
+  }
+
   void _handleReply(String messageId, String text) {
     setState(() {
       _replyingToId = messageId;
@@ -539,8 +566,7 @@ _audioPlayerService.currentTitleStream.listen((title) {
     if (diff.inDays < 7) return 'Был(а) ${diff.inDays} дн назад';
     return 'Был(а) ${_lastSeen!.day}.${_lastSeen!.month}.${_lastSeen!.year}';
   }
-
-  // ==================== ДОПОЛНИТЕЛЬНО: обновлённый _showAttachmentMenu (ещё один Telegram-штрих) ====================
+ 
   void _showAttachmentMenu() {
     final isLight = Theme.of(context).brightness == Brightness.light;
     showModalBottomSheet(
@@ -614,7 +640,11 @@ _audioPlayerService.currentTitleStream.listen((title) {
     final accentColor = settings.accentColor;
 
     return Scaffold(
-      extendBodyBehindAppBar: true, // КРИТИЧНО ДЛЯ БЛЮРА APPBAR
+      extendBodyBehindAppBar: true,
+      // ЕСТЕСТВЕННЫЙ ПОДЪЁМ ВСЕГО КОНТЕНТА (сообщения + input + player + кнопка вниз)
+      // при открытии клавиатуры. Дополнительный ручной подъём через viewInsets.bottom УБРАН.
+      // Лаги клавиатуры устранены за счёт RepaintBoundary вокруг всех BackdropFilter.
+      resizeToAvoidBottomInset: true,
       backgroundColor: bgColor,
       
       // ==================== БЛЮР TOP-BAR ====================
@@ -625,7 +655,7 @@ _audioPlayerService.currentTitleStream.listen((title) {
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: AppBar(
               backgroundColor: isLight
-                  ? Colors.white.withOpacity(0.65) // Более прозрачный для iOS стиля
+                  ? Colors.white.withOpacity(0.65)
                   : Colors.black.withOpacity(0.65),
               foregroundColor: isLight ? Colors.black : Colors.white,
               elevation: 0,
@@ -644,11 +674,13 @@ _audioPlayerService.currentTitleStream.listen((title) {
                 },
                 child: Row(
                   children: [
-                    if (_otherUserPhotoUrl != null || widget.otherUserId == _currentUser.uid)
+                    if (_otherUserAvatarFile != null || widget.otherUserId == _currentUser.uid)
                       CircleAvatar(
                         radius: 18,
-                        backgroundImage: _otherUserPhotoUrl != null ? NetworkImage(_otherUserPhotoUrl!) : null,
-                        child: _otherUserPhotoUrl == null && widget.otherUserId != _currentUser.uid
+                        backgroundImage: _otherUserAvatarFile != null
+                            ? FileImage(_otherUserAvatarFile!)
+                            : null,
+                        child: _otherUserAvatarFile == null && widget.otherUserId != _currentUser.uid
                             ? const Icon(Icons.person, size: 20)
                             : null,
                       ),
@@ -682,7 +714,7 @@ _audioPlayerService.currentTitleStream.listen((title) {
 
       body: Stack(
         children: [
-          // 1. Фон и Сообщения (скроллятся под блюром)
+          // 1. Фон и Сообщения
           ChatBackground(
             backgroundColor: bgColor,
             wallpaperUrl: settings.wallpaperUrl,
@@ -697,322 +729,231 @@ _audioPlayerService.currentTitleStream.listen((title) {
               onEdit: _handleEdit,
               onDeleteMe: (id) => _handleDelete(id, forEveryone: false),
               onDeleteAll: (id) => _handleDelete(id, forEveryone: true),
-              onForward: _handleForward,
-              // Убедитесь, что в MessageList добавлен padding снизу (около 120), чтобы нижний бар не перекрывал последнее сообщение!
+              onForward: _handleForward, 
             ),
           ),
-
-                    // ==================== 10. БЛЮР-Виджет музыки собеседника ====================
+ 
+          // ==================== БЛЮР-Виджет музыки собеседника ====================
           if (_otherPinnedSongTitle != null && _otherPinnedSongTitle!.isNotEmpty)
             Positioned(
-              top: kToolbarHeight + 22,
+              top: kToolbarHeight + 60,
               left: 16,
               right: 16,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isLight
-                          ? Colors.white.withOpacity(0.65)
-                          : Colors.black.withOpacity(0.65),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isLight ? Colors.black.withOpacity(0.1) : Colors.white.withOpacity(0.1),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: GestureDetector(
-                      onTap: _playOtherUserSong,
-                      child: Row(
-                        children: [
-                          const Icon(Icons.music_note, color: Colors.deepPurple, size: 28),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(_otherPinnedSongTitle!, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                Text(_otherPinnedSongArtist ?? '', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-                              ],
-                            ),
-                          ),
-                          Text(_otherPinnedSongDuration ?? '', style: const TextStyle(fontSize: 13)),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.play_arrow_rounded, color: Colors.deepPurple),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-          // 2. Плавающая кнопка "Вниз" (Telegram Feature)
-          Positioned(
-            bottom: 90 + MediaQuery.of(context).viewInsets.bottom, // Над полем ввода
-            right: 16,
-            child: AnimatedScale(
-              scale: _showScrollToBottom ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutBack,
-              child: FloatingActionButton(
-                mini: true,
-                backgroundColor: isLight ? Colors.white : Colors.grey[800],
-                foregroundColor: isLight ? Colors.black54 : Colors.white70,
-                elevation: 4,
-                onPressed: _scrollToBottom,
-                child: const Icon(Icons.keyboard_arrow_down, size: 30),
-              ),
-            ),
-          ),
-
-          // 3. БЛЮР ПОЛЯ ОТПРАВКИ СООБЩЕНИЯ (Glassmorphism)
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                child: Container(
-                  padding: EdgeInsets.fromLTRB(8, 8, 8, MediaQuery.of(context).padding.bottom + 8),
-                  decoration: BoxDecoration(
-                    color: isLight
-                        ? Colors.white.withOpacity(0.7) // Telegram iOS style
-                        : const Color(0xFF1C1C1D).withOpacity(0.7),
-                    border: Border(
-                      top: BorderSide(
-                        color: isLight ? Colors.black.withOpacity(0.1) : Colors.white.withOpacity(0.1),
-                        width: 0.5,
-                      ),
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Плашка ответа
-                      if (_replyingToId != null)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: isLight ? Colors.black.withOpacity(0.05) : Colors.white.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(width: 3, height: 35, color: accentColor),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Ответ', style: TextStyle(color: accentColor, fontSize: 13, fontWeight: FontWeight.w600)),
-                                    Text(
-                                      _replyingToText ?? '',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(color: isLight ? Colors.black87 : Colors.white70, fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(CupertinoIcons.clear_circled_solid, color: Colors.grey, size: 20),
-                                onPressed: _cancelReply,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            ],
-                          ),
+              child: RepaintBoundary(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isLight
+                            ? Colors.white.withOpacity(0.65)
+                            : Colors.black.withOpacity(0.65),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isLight ? Colors.black.withOpacity(0.1) : Colors.white.withOpacity(0.1),
+                          width: 0.5,
                         ),
-                      
-                      // Поле ввода
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          CupertinoButton(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            onPressed: _showAttachmentMenu,
-                            child: Icon(CupertinoIcons.paperclip, color: isLight ? CupertinoColors.systemGrey : Colors.grey, size: 26),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            key: _textFieldKey, // Ключ для анимации вылета
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 2),
-                              decoration: BoxDecoration(
-                                color: isLight ? Colors.black.withOpacity(0.05) : Colors.white.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.transparent),
-                              ),
-                              child: CupertinoTextField(
-                                controller: _messageController,
-                                placeholder: 'Напишите, скучно...',
-                                placeholderStyle: TextStyle(color: isLight ? CupertinoColors.systemGrey : Colors.grey.shade400),
-                                style: TextStyle(color: isLight ? CupertinoColors.black : Colors.white, fontSize: 17),
-                                decoration: const BoxDecoration(),
-                                maxLines: 5,
-                                minLines: 1,
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                keyboardAppearance: isLight ? Brightness.light : Brightness.dark,
-                                textCapitalization: TextCapitalization.sentences,
-                                onChanged: (_) => _updateTypingStatus(),
-                                onSubmitted: (_) {
-                                  if (settings.sendByEnter) _sendMessage();
-                                },
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          
-                          // Микрофон / Кнопка отправки с морфингом
-                          ValueListenableBuilder<TextEditingValue>(
-                            valueListenable: _messageController,
-                            builder: (context, value, child) {
-                              final hasText = value.text.trim().isNotEmpty;
-                              return AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 200),
-                                transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
-                                child: hasText
-                                    ? CupertinoButton(
-                                        key: const ValueKey('send'),
-                                        padding: const EdgeInsets.only(bottom: 4),
-                                        onPressed: _sendMessage,
-                                        child: Icon(CupertinoIcons.arrow_up_circle_fill, color: accentColor, size: 32),
-                                      )
-                                    : CupertinoButton(
-                                        key: const ValueKey('mic'),
-                                        padding: const EdgeInsets.only(bottom: 4),
-                                        onPressed: () {}, // Заглушка клика
-                                        onLongPress: _startVoiceRecording,
-                                        child: Icon(CupertinoIcons.mic, color: isLight ? CupertinoColors.systemGrey : Colors.grey, size: 28),
-                                      ),
-                              );
-                            },
-                          ),
-                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-                    // ==================== 7. ПАНЕЛЬ ПЛЕЕРА (аудио + голосовые) ====================
-                    // ==================== 7. ПАНЕЛЬ ПЛЕЕРА С ПРОГРЕСС-БАРОМ ====================
-          if (_isPlayerVisible)
-            Positioned(
-              bottom: 90 + MediaQuery.of(context).viewInsets.bottom + 8,
-              left: 16,
-              right: 16,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isLight 
-                          ? Colors.white.withOpacity(0.92)
-                          : const Color(0xFF1C1C1D).withOpacity(0.92),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isLight ? Colors.black.withOpacity(0.08) : Colors.white.withOpacity(0.08),
-                        width: 0.5,
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Заголовок трека
-                        Row(
+                      child: GestureDetector(
+                        onTap: _playOtherUserSong,
+                        child: Row(
                           children: [
-                            const Icon(Icons.music_note, color: Colors.deepPurple, size: 24),
+                            const Icon(Icons.music_note, color: Colors.deepPurple, size: 28),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    _nowPlayingTitle ?? 'Сейчас играет',
-                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (_nowPlayingArtist != null)
-                                    Text(
-                                      _nowPlayingArtist!,
-                                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                                  Text(_otherPinnedSongTitle!, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  Text(_otherPinnedSongArtist ?? '', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
                                 ],
                               ),
                             ),
-                            IconButton(
-                              icon: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, 
-                                         color: Colors.deepPurple),
-                              onPressed: () async {
-                                if (_isPlaying) {
-                                  await _audioPlayerService.pause();
-                                } else {
-                                  await _audioPlayerService.resume();
-                                }
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 22),
-                              onPressed: () {
-                                _audioPlayerService.stop();
-                                setState(() => _isPlayerVisible = false);
-                              },
-                            ),
+                            Text(_otherPinnedSongDuration ?? '', style: const TextStyle(fontSize: 13)),
+                            const SizedBox(width: 8),
+                            const Icon(Icons.play_arrow_rounded, color: Colors.deepPurple),
                           ],
                         ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
-                        const SizedBox(height: 8),
+          // 2. Плавающая кнопка "Вниз"
+          Positioned(
+            bottom: 72,
+            right: 16,
+            child: AnimatedScale(
+              scale: _showScrollToBottom ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutBack,
+              child: RepaintBoundary(
+                child: ClipOval(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: GestureDetector(
+                      onTap: _scrollToBottom,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: (isLight 
+                                  ? Colors.white.withOpacity(0.4) 
+                                  : Colors.grey[800]!.withOpacity(0.4)),
+                          border: Border.all(
+                            color: (isLight ? Colors.white : Colors.white10).withOpacity(0.2),
+                            width: 0.5,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 30,
+                          color: isLight ? Colors.black87 : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
 
-                        // Прогресс-бар + время
-                        Row(
-                          children: [
-                            Text(
-                              _formatDuration(_currentPosition),
-                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                            Expanded(
-                              child: SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  trackHeight: 3,
-                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                                ),
-                                child: Slider(
-                                  value: _currentPosition.inMilliseconds.toDouble().clamp(
-                                        0,
-                                        (_totalDuration.inMilliseconds > 0 
-                                            ? _totalDuration.inMilliseconds 
-                                            : 1).toDouble(),
+          // 3. ПЛАВАЮЩЕЕ ПОЛЕ ВВОДА (ChatInputBar)
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 12,
+            child: ChatInputBar(
+              replyingToText: _replyingToText,
+              onCancelReply: _cancelReply,
+              onAttachmentPressed: _showAttachmentMenu,
+              onSend: _sendMessage,
+              onVoiceRecording: _startVoiceRecording,
+              controller: _messageController,
+              accentColor: accentColor,
+              textFieldKey: _textFieldKey,
+              onChanged: _updateTypingStatus,
+              onSubmitted: settings.sendByEnter ? () => _sendMessage() : null,
+            ),
+          ),
+
+          // ==================== ГЛОБАЛЬНЫЙ ПЛЕЕР ====================
+          if (_isPlayerVisible)
+            Positioned(
+              bottom: 88,
+              left: 16,
+              right: 16,
+              child: RepaintBoundary(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isLight 
+                            ? Colors.white.withOpacity(0.92)
+                            : const Color(0xFF1C1C1D).withOpacity(0.92),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isLight ? Colors.black.withOpacity(0.08) : Colors.white.withOpacity(0.08),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [ 
+                          Row(
+                            children: [
+                              const Icon(Icons.music_note, color: Colors.deepPurple, size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _nowPlayingTitle ?? 'Сейчас играет',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    if (_nowPlayingArtist != null)
+                                      Text(
+                                        _nowPlayingArtist!,
+                                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                  max: _totalDuration.inMilliseconds.toDouble() > 0 
-                                      ? _totalDuration.inMilliseconds.toDouble() 
-                                      : 1,
-                                  activeColor: Colors.deepPurple,
-                                  inactiveColor: Colors.grey.withOpacity(0.3),
-                                  onChanged: (value) {
-                                    _audioPlayerService.seek(Duration(milliseconds: value.toInt()));
-                                  },
+                                  ],
                                 ),
                               ),
-                            ),
-                            Text(
-                              _formatDuration(_totalDuration),
-                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ],
+                              IconButton(
+                                icon: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, 
+                                           color: Colors.deepPurple),
+                                onPressed: () async {
+                                  if (_isPlaying) {
+                                    await _audioPlayerService.pause();
+                                  } else {
+                                    await _audioPlayerService.resume();
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 22),
+                                onPressed: () {
+                                  _audioPlayerService.stop();
+                                  setState(() => _isPlayerVisible = false);
+                                },
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 8),
+ 
+                          Row(
+                            children: [
+                              Text(
+                                _formatDuration(_currentPosition),
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 3,
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                    overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                  ),
+                                  child: Slider(
+                                    value: _currentPosition.inMilliseconds.toDouble().clamp(
+                                          0,
+                                          (_totalDuration.inMilliseconds > 0 
+                                              ? _totalDuration.inMilliseconds 
+                                              : 1).toDouble(),
+                                        ),
+                                    max: _totalDuration.inMilliseconds.toDouble() > 0 
+                                        ? _totalDuration.inMilliseconds.toDouble() 
+                                        : 1,
+                                    activeColor: Colors.deepPurple,
+                                    inactiveColor: Colors.grey.withOpacity(0.3),
+                                    onChanged: (value) {
+                                      _audioPlayerService.seek(Duration(milliseconds: value.toInt()));
+                                    },
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                _formatDuration(_totalDuration),
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1022,4 +963,4 @@ _audioPlayerService.currentTitleStream.listen((title) {
       ),
     );
   }
-}
+} 

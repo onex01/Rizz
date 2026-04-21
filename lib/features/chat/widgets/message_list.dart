@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:Rizz/shared/services/cache_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -8,8 +9,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/settings/settings_provider.dart';
 import '../../../core/platform/platform_info.dart';
-import '../../../core/logger/app_logger.dart'; 
-import '../../../shared/services/file_converter_service.dart';
+import '../../../core/logger/app_logger.dart';  
 import '../data/chat_repository.dart';
 import 'message_bubble.dart';
 
@@ -142,29 +142,31 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
   }
 
   Future<void> _downloadFile(Map<String, dynamic> msgData) async {
-    try {
-      final hexData = msgData['hexData'];
-      final fileName = msgData['fileName'];
-      if (hexData == null || fileName == null) {
-        Fluttertoast.showToast(msg: 'Ошибка: файл не найден');
-        return;
-      }
-      final file = await FileConverterService.hexToFile(hexData, fileName);
-      // Использовать платформенный info для сохранения
-      final platformInfo = GetIt.I<PlatformInfo>();
-      final downloadsDir = await platformInfo.getDownloadsDirectory();
-      if (downloadsDir != null) {
-        final savedFile = File('${downloadsDir.path}/$fileName');
-        await file.copy(savedFile.path);
-        Fluttertoast.showToast(msg: 'Файл сохранён в Загрузки');
-      } else {
-        Fluttertoast.showToast(msg: 'Не удалось сохранить файл');
-      }
-    } catch (e, stack) {
-      _logger.error('Download file error', error: e, stack: stack);
-      Fluttertoast.showToast(msg: 'Ошибка сохранения файла');
+  try {
+    final messageId = msgData['id'] ?? 'unknown'; // если id есть в msgData
+    // Если id нет — можно использовать hash или оставить как есть
+    final cachedFile = await GetIt.I<MessageFileCache>().getOrConvert(
+      messageId,
+      msgData,
+    );
+
+    if (cachedFile == null) {
+      Fluttertoast.showToast(msg: 'Файл не найден');
+      return;
     }
+
+    final platformInfo = GetIt.I<PlatformInfo>();
+    final downloadsDir = await platformInfo.getDownloadsDirectory();
+    if (downloadsDir != null) {
+      final savedFile = File('${downloadsDir.path}/${msgData['fileName'] ?? 'downloaded_file'}');
+      await cachedFile.copy(savedFile.path);
+      Fluttertoast.showToast(msg: 'Файл сохранён в Загрузки');
+    }
+  } catch (e, stack) {
+    _logger.error('Download file error', error: e, stack: stack);
+    Fluttertoast.showToast(msg: 'Ошибка сохранения файла');
   }
+}
 
   void _showFullScreenImage(BuildContext context, File file) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(

@@ -434,7 +434,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => ChangelogScreen()));
                 },
                 child: const Text(
-                  'Версия 0.1.95',
+                  'Версия 0.1.102',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
               ),

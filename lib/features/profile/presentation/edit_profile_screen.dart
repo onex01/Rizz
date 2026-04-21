@@ -1,13 +1,15 @@
 import 'dart:io';
-import 'dart:convert';
+import 'dart:convert';                    // для base64Encode в аватаре
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:get_it/get_it.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';   // ← ОБЯЗАТЕЛЬНЫЙ импорт
 
 import '../../../shared/services/firestore_service.dart';
 import '../../../shared/services/file_converter_service.dart';
+import '../../../shared/services/chunked_file_service.dart';
 import '../../../core/logger/app_logger.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -20,6 +22,7 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _user = FirebaseAuth.instance.currentUser!;
   final _firestoreService = GetIt.I<FirestoreService>();
+  final _chunkedFileService = GetIt.I<ChunkedFileService>();
   final _logger = GetIt.I<AppLogger>();
 
   final _nicknameController = TextEditingController();
@@ -30,6 +33,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _songArtistController = TextEditingController();
 
   String? _avatarHex;
+  String? _pinnedSongLargeFileId;
   bool _saving = false;
   bool _isLoading = true;
   String? _usernameError;
@@ -54,7 +58,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _usernameError = available ? null : 'Имя уже занято');
   }
 
-    Future<void> _loadProfile() async {
+  Future<void> _loadProfile() async {
     try {
       final doc = await _firestoreService.getUser(_user.uid);
       if (doc.exists && mounted) {
@@ -67,6 +71,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _bioController.text = data['bio'] ?? '';
           _phoneController.text = data['phoneNumber'] ?? '';
           _avatarHex = data['avatarHex'];
+          _pinnedSongLargeFileId = pinnedSong['largeFileId'];
 
           _songTitleController.text = pinnedSong['title'] ?? '';
           _songArtistController.text = pinnedSong['artist'] ?? '';
@@ -82,13 +87,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-    Future<void> _saveProfile() async {
+  Future<void> _saveProfile() async {
     final nickname = _nicknameController.text.trim();
     if (nickname.isEmpty) {
       Fluttertoast.showToast(msg: "Никнейм не может быть пустым");
       return;
-    }
-
+    } 
     if (_usernameError != null) {
       Fluttertoast.showToast(msg: "Исправьте ошибку в имени пользователя");
       return;
@@ -100,12 +104,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'nickname': nickname,
         'bio': _bioController.text.trim(),
         'username': _usernameController.text.trim(),
-        'pinnedSong': {
-          'title': _songTitleController.text.trim(),
-          'artist': _songArtistController.text.trim(),
-          // duration и audioUrl можно добавить позже через отдельный сервис
-        },
-      };
+      }; 
       if (_phoneController.text.isNotEmpty) {
         updates['phoneNumber'] = _phoneController.text.trim();
       }
@@ -120,9 +119,54 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  // ==================== ЗАГРУЗКА МУЗЫКИ В HEX ====================
+  Future<void> _pickAndUploadPinnedSong() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.audio,
+        allowedExtensions: ['mp3', 'm4a', 'wav', 'aac', 'ogg'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = File(result.files.first.path!);
+      final fileName = result.files.first.name;
+
+      setState(() => _saving = true);
+
+      final bytes = await file.readAsBytes();
+      final largeFileId = await _chunkedFileService.uploadLargeFile(bytes, fileName);
+
+      final pinnedSong = {
+        'title': _songTitleController.text.trim().isNotEmpty 
+            ? _songTitleController.text.trim() 
+            : 'Без названия',
+        'artist': _songArtistController.text.trim().isNotEmpty 
+            ? _songArtistController.text.trim() 
+            : 'Исполнитель',
+        'largeFileId': largeFileId,
+        'fileName': fileName,
+      };
+
+      await _firestoreService.updateUser(_user.uid, {'pinnedSong': pinnedSong});
+
+      setState(() => _pinnedSongLargeFileId = largeFileId);
+      Fluttertoast.showToast(msg: "✅ Музыка успешно закреплена (HEX + чанки)");
+    } catch (e, stack) {
+      _logger.error('Failed to upload pinned song as HEX', error: e, stack: stack);
+      Fluttertoast.showToast(msg: "Ошибка загрузки трека");
+    } finally {
+      setState(() => _saving = false);
+    }
+  }
+
   Future<void> _pickAndUploadAvatar() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 800, imageQuality: 85);
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 800,
+      imageQuality: 85,
+    );
     if (picked == null) return;
 
     setState(() => _saving = true);
@@ -151,7 +195,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return FutureBuilder<File?>(
         future: FileConverterService.hexToFile(_avatarHex!, 'avatar_${_user.uid}.jpg'),
         builder: (context, snapshot) {
-          if (snapshot.hasData) {
+          if (snapshot.hasData && snapshot.data != null) {
             return CircleAvatar(
               radius: 70,
               backgroundImage: FileImage(snapshot.data!),
@@ -167,6 +211,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Редактировать профиль'),
@@ -184,8 +229,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
-                children: [
-                  // ... аватар
+                children: [ 
                   Center(
                     child: Stack(
                       alignment: Alignment.bottomRight,
@@ -210,6 +254,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 40),
+
                   TextField(
                     controller: _usernameController,
                     decoration: InputDecoration(
@@ -254,12 +299,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       alignLabelWithHint: true,
                     ),
                   ),
-                                    const SizedBox(height: 20),
+
+                  const SizedBox(height: 30),
                   const Divider(),
                   const SizedBox(height: 10),
-                  const Text('Закреплённая песня (статус)', 
+
+                  const Text('Закреплённая песня (статус)',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 12),
+
                   TextField(
                     controller: _songTitleController,
                     decoration: const InputDecoration(
@@ -279,6 +327,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       prefixIcon: Icon(Icons.person_outline),
                     ),
                   ),
+                  const SizedBox(height: 16),
+
+                  ElevatedButton.icon(
+                    onPressed: _saving ? null : _pickAndUploadPinnedSong,
+                    icon: const Icon(Icons.music_note),
+                    label: const Text('Загрузить трек (HEX + чанки)'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 52),
+                    ),
+                  ),
+
+                  if (_pinnedSongLargeFileId != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Загружено (ID: ${_pinnedSongLargeFileId!.substring(0, 12)}...)',
+                        style: const TextStyle(color: Colors.green, fontSize: 13),
+                      ),
+                    ),
+
                   const SizedBox(height: 40),
                   if (_saving) const Center(child: CircularProgressIndicator()),
                 ],

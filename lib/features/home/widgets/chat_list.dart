@@ -1,5 +1,7 @@
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io';
+
+import 'package:Rizz/shared/services/file_converter_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -167,23 +169,36 @@ class _ChatListState extends State<ChatList> with AutomaticKeepAliveClientMixin<
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         leading: isSelfChat
-                            ? const CircleAvatar(
-                                radius: 28,
-                                backgroundColor: Color(0xFFE0E0E0),
-                                child: Icon(Icons.note_alt, size: 28, color: Colors.grey),
-                              )
-                            : CircleAvatar(
-                                radius: 28,
-                                backgroundImage: _userPhotoUrls[otherUserId]?.isNotEmpty == true
-                                    ? CachedNetworkImageProvider(_userPhotoUrls[otherUserId]!)
-                                    : null,
-                                backgroundColor: _userPhotoUrls[otherUserId]?.isNotEmpty == true
-                                    ? null
-                                    : Colors.grey.shade300,
-                                child: _userPhotoUrls[otherUserId]?.isNotEmpty != true
-                                    ? const Icon(Icons.person, size: 28, color: Colors.grey)
-                                    : null,
-                              ),
+    ? const CircleAvatar(
+        radius: 28,
+        backgroundColor: Color(0xFFE0E0E0),
+        child: Icon(Icons.note_alt, size: 28, color: Colors.grey),
+      )
+    : (_userPhotoUrls[otherUserId]?.isNotEmpty == true
+        ? FutureBuilder<File?>(
+            future: FileConverterService.hexToFile(
+              _userPhotoUrls[otherUserId]!,
+              'avatar_${otherUserId}.jpg',
+            ),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                return CircleAvatar(
+                  radius: 28,
+                  backgroundImage: FileImage(snapshot.data!),
+                );
+              }
+              return CircleAvatar(
+                radius: 28,
+                backgroundColor: Colors.grey.shade300,
+                child: Icon(Icons.person, size: 28, color: Colors.grey),
+              );
+            },
+          )
+        : CircleAvatar(
+            radius: 28,
+            backgroundColor: Colors.grey.shade300,
+            child: Icon(Icons.person, size: 28, color: Colors.grey),
+          )),
                         title: Text(displayName, 
                             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17)),
                         subtitle: Text(lastMessage, 
@@ -257,8 +272,7 @@ class _ChatListState extends State<ChatList> with AutomaticKeepAliveClientMixin<
     }
   }
 
-  // ==================== ИСПРАВЛЕНО: подгрузка пользователей только при необходимости ====================
-  // ==================== ИСПРАВЛЕНО: загрузка через _firestoreService.getUser (как в chat_screen.dart) ====================
+  // ==================== ИСПРАВЛЕНО: подгрузка + надёжное сохранение в кэш ====================
 Future<void> _loadUserInfoIfNeeded(List<QueryDocumentSnapshot> chats) async {
   final Set<String> uidsToLoad = {};
   for (var doc in chats) {
@@ -272,21 +286,24 @@ Future<void> _loadUserInfoIfNeeded(List<QueryDocumentSnapshot> chats) async {
   }
   if (uidsToLoad.isEmpty) return;
 
-  // Сначала проверяем локальный кэш
+  // Сначала проверяем локальный кэш (ник + username + avatarHex)
   for (var uid in uidsToLoad) {
     final cachedNick = _userCache.getNickname(uid);
     final cachedUsername = _userCache.getUsername(uid);
-    final cachedPhoto = _userCache.getPhotoUrl(uid);
+    final cachedAvatarHex = _userCache.getAvatarHex(uid);   // ← НОВОЕ
+
     if (cachedNick != null) _userNicknames[uid] = cachedNick;
     if (cachedUsername != null) _userUsernames[uid] = cachedUsername;
-    if (cachedPhoto != null) _userPhotoUrls[uid] = cachedPhoto;
+    if (cachedAvatarHex != null && cachedAvatarHex.isNotEmpty) {
+      _userPhotoUrls[uid] = cachedAvatarHex;   // используется в FutureBuilder
+    }
   }
 
   final uidsToFetch = uidsToLoad.where((uid) => !_userNicknames.containsKey(uid)).toList();
   if (uidsToFetch.isEmpty) return;
 
   try {
-    // Параллельная загрузка (как в chat_screen.dart)
+    // Параллельная загрузка из Firestore
     final futures = uidsToFetch.map((uid) => _firestoreService.getUser(uid)).toList();
     final snapshots = await Future.wait(futures);
 
@@ -297,21 +314,26 @@ Future<void> _loadUserInfoIfNeeded(List<QueryDocumentSnapshot> chats) async {
       final data = doc.data() as Map<String, dynamic>? ?? {};
       final nickname = data['nickname'] ?? uidsToFetch[i];
       final username = data['username'] ?? '';
-      final photoUrl = data['photoUrl'] ?? '';
+      final avatarHex = data['avatarHex'] ?? '';
 
       _userNicknames[uidsToFetch[i]] = nickname;
       _userUsernames[uidsToFetch[i]] = username;
-      _userPhotoUrls[uidsToFetch[i]] = photoUrl;
+      if (avatarHex.isNotEmpty) {
+        _userPhotoUrls[uidsToFetch[i]] = avatarHex;
+      }
 
-      await _userCache.cacheUser(uidsToFetch[i], nickname, photoUrl, username);
+      // === НАДЁЖНОЕ СОХРАНЕНИЕ В КЭШ ===
+      await _userCache.cacheUser(uidsToFetch[i], nickname, null, username);
+      if (avatarHex.isNotEmpty) {
+        await _userCache.cacheAvatarHex(uidsToFetch[i], avatarHex);
+      }
     }
 
     if (mounted) setState(() {});
   } catch (e, stack) {
     _logger.error('Error loading user info for chat list', error: e, stack: stack);
   }
-}
-
+} 
   List<Widget> _buildContextMenuActions(QueryDocumentSnapshot doc, String otherUserId, bool isSelfChat, bool isPinned) {
     final data = doc.data() as Map<String, dynamic>;
     final isMuted = data['isMuted'] ?? false;

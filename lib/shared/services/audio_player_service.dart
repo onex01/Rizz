@@ -18,7 +18,7 @@ class AudioPlayerService {
   Stream<Duration> get positionStream => _audioPlayer.positionStream;
   Stream<Duration?> get durationStream => _audioPlayer.durationStream;
   Stream<MediaItem?> get currentMediaItemStream => _audioPlayer.sequenceStateStream
-      .map((state) => state?.currentSource?.tag as MediaItem?);
+      .map((state) => state.currentSource?.tag as MediaItem?);
 
   final _currentTitle = BehaviorSubject<String?>();
   Stream<String?> get currentTitleStream => _currentTitle.stream;

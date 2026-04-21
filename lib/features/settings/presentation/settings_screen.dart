@@ -1,5 +1,8 @@
+import 'dart:ui';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -25,8 +28,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final _currentUser = FirebaseAuth.instance.currentUser!;
-  final _firestoreService = GetIt.I<FirestoreService>();
-  final _cache = GetIt.I<MessageFileCache>(); 
+  final _firestoreService = GetIt.I<FirestoreService>(); 
   final _updateService = GetIt.I<UpdateService>();
 
   String _appVersion = AppVersion.version;
@@ -231,29 +233,215 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildCacheSection(bool isLight) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            'Кэш',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
+  final cache = GetIt.I<MessageFileCache>();
+
+  return StatefulBuilder(
+    builder: (BuildContext context, StateSetter setLocalState) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+            child: Container(
+              decoration: BoxDecoration(
+                color: isLight
+                    ? Colors.white.withOpacity(0.75)
+                    : const Color(0xFF1C1C1D).withOpacity(0.75),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isLight
+                      ? Colors.black.withOpacity(0.1)
+                      : Colors.white.withOpacity(0.1),
+                  width: 0.5,
+                ),
+              ),
+              child: FutureBuilder<Map<String, dynamic>>(
+                future: cache.getCacheInfo(),
+                builder: (context, snapshot) {
+                  final info = snapshot.data ?? {
+                    'fileCount': 0,
+                    'totalSizeFormatted': '0 B',
+                    'files': <String>[],
+                  };
+
+                  return ExpansionTile(
+                    leading: Icon(
+                      Icons.storage,
+                      color: isLight ? Colors.grey.shade700 : Colors.grey.shade400,
+                    ),
+                    title: Text(
+                      'Кэш сообщений',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 17,
+                        color: isLight ? Colors.black87 : Colors.white,
+                      ),
+                    ),
+                    subtitle: Text(
+                      '${info['fileCount']} файлов • ${info['totalSizeFormatted']}',
+                      style: TextStyle(
+                        color: isLight ? Colors.grey.shade600 : Colors.grey.shade500,
+                        fontSize: 15,
+                      ),
+                    ),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Статистика
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildStatTile(
+                                    'Файлов',
+                                    info['fileCount'].toString(),
+                                    isLight,
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _buildStatTile(
+                                    'Размер',
+                                    info['totalSizeFormatted'],
+                                    isLight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Список названий файлов
+                            Text(
+                              'Файлы в кеше:',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: isLight ? Colors.grey.shade700 : Colors.grey.shade400,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            if (info['files'].isEmpty)
+                              Text(
+                                'Кэш пуст',
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              )
+                            else
+                              Container(
+                                constraints: const BoxConstraints(maxHeight: 220),
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const ClampingScrollPhysics(),
+                                  itemCount: (info['files'] as List<String>).length,
+                                  itemBuilder: (context, index) {
+                                    final fileName = (info['files'] as List<String>)[index];
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 2),
+                                      child: Text(
+                                        fileName,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: isLight ? Colors.grey.shade600 : Colors.grey.shade400,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            const SizedBox(height: 20),
+
+                            // Кнопка очистки
+                            Center(
+                              child: CupertinoButton.filled(
+                                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                                onPressed: () async {
+                                  final confirm = await showCupertinoDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => CupertinoAlertDialog(
+                                      title: const Text('Очистить кэш?'),
+                                      content: const Text(
+                                        'Все медиафайлы и аватарки будут удалены с устройства.\n\nЭто действие нельзя отменить.',
+                                      ),
+                                      actions: [
+                                        CupertinoDialogAction(
+                                          child: const Text('Отмена'),
+                                          onPressed: () => Navigator.pop(ctx, false),
+                                        ),
+                                        CupertinoDialogAction(
+                                          isDestructiveAction: true,
+                                          child: const Text('Очистить'),
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (confirm == true) {
+                                    await cache.clearCache();
+                                    setLocalState(() {}); // обновляем FutureBuilder
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Кэш успешно очищен'),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                                child: const Text(
+                                  'Очистить кэш',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
           ),
         ),
-        ListTile(
-          leading: Icon(Icons.storage, color: isLight ? Colors.grey.shade700 : Colors.grey.shade400),
-          title: Text('Кэш сообщений', style: TextStyle(color: isLight ? Colors.black87 : Colors.white)),
-          subtitle: Text(
-            '${_cache.size} файлов в памяти',
-            style: TextStyle(color: isLight ? Colors.grey.shade600 : Colors.grey.shade500),
+      );
+    },
+  );
+}
+
+// Вспомогательный метод для красивых строк статистики
+Widget _buildStatTile(String label, String value, bool isLight) {
+  return Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: isLight ? Colors.black.withOpacity(0.05) : Colors.white.withOpacity(0.05),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: isLight ? Colors.grey.shade600 : Colors.grey.shade400,
           ),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _showCacheOptions(),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildUpdateSection(bool isLight) {
     return Column(
@@ -476,44 +664,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-  }
- 
-  void _showCacheOptions() {
-    final cache = MessageFileCache();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Кэш сообщений'),
-        content: Text(
-          'В кэше сейчас: ${cache.size} файлов\n\n'
-          'Очистить кэш сообщений?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              cache.clear();
-              if (mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Кэш сообщений очищен')),
-                );
-                setState(() {});
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Очистить'),
-          ),
-        ],
-      ),
-    );
-  }
+  } 
 
   void _showAboutDialog() {
     showDialog(
