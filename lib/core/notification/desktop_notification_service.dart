@@ -125,4 +125,10 @@ class DesktopNotificationService implements NotificationService {
     _messageController.close();
     _messageOpenedController.close();
   }
+
+  @override
+  Future<bool> isPermissionGranted() async => true;
+
+  @override
+  Future<bool> requestPermission() async => true;
 }

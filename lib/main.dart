@@ -1,6 +1,7 @@
 import 'package:Rizz/shared/services/audio_player_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,9 @@ void main() async {
   );
 
   await setupServiceLocator();
+  await GoogleSignIn.instance.initialize(
+    clientId: '931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com',
+  );
 
   final logger = GetIt.I<AppLogger>();
   await logger.init();

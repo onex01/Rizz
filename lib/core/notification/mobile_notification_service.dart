@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'notification_service.dart';
 
@@ -180,5 +181,27 @@ class MobileNotificationService implements NotificationService {
       ),
       payload: jsonEncode({'chatId': chatId}),
     );
+  }
+
+  @override
+  Future<bool> isPermissionGranted() async {
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      final status = await Permission.notification.status;
+      return status.isGranted;
+    }
+    return true;
+  }
+
+  @override
+  Future<bool> requestPermission() async {
+    // На мобильных разрешение запрашивается автоматически при первом уведомлении,
+    // здесь можно просто вернуть текущий статус.
+    return isPermissionGranted();
+  }
+
+  Future<void> openSettings() async {
+    // openAppSettings из permission_handler откроет настройки приложения
+    await openAppSettings();
   }
 }

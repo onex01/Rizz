@@ -17,9 +17,6 @@ class AuthServiceImpl implements AuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   final AppLogger _logger;
-  
-  // вот эту дичь не трожь, я библиотеки обновил, теперь метод по-другому вызывается
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   AuthServiceImpl(this._auth, this._firestore, this._logger);
 
@@ -67,22 +64,22 @@ class AuthServiceImpl implements AuthService {
   @override
   Future<User?> signInWithGoogle() async {
     try {
-      // FIX 2 тут тоже в общем
-      final account = await _googleSignIn.authenticate(
-        scopeHint: ['email', 'profile']
-      );      
+      // Инициализируем синглтон с clientId (обязательно для веба)
+      await GoogleSignIn.instance.initialize(
+        clientId: '931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com',
+      );
+
+      final account = await GoogleSignIn.instance.authenticate();
+      if (account == null) return null;
+
       final auth = await account.authentication;
-      
-      // FIX 3 тут я вообще убрал метод
-      // idToken is sufficient for Firebase Auth so we set accessToken to null.
       final credential = GoogleAuthProvider.credential(
-        accessToken: null, 
         idToken: auth.idToken,
       );
-      
+
       final userCred = await _auth.signInWithCredential(credential);
       final user = userCred.user!;
-      
+
       await _firestore.collection('users').doc(user.uid).set({
         'uid': user.uid,
         'email': user.email,
@@ -91,6 +88,7 @@ class AuthServiceImpl implements AuthService {
         'bio': '',
         'lastSeen': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
       return user;
     } catch (e, stack) {
       await _logger.error('Google sign in failed', error: e, stack: stack);

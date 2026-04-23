@@ -42,7 +42,7 @@ class RemoteLogger {
         'metadata': fullMetadata,
         'timestamp': DateTime.now().toIso8601String(),
         'appVersion': AppVersion.fullVersion,
-        'platform': Platform.operatingSystem,
+        'platform': kIsWeb ? 'web' : Platform.operatingSystem,
         'device_id': deviceId,
         'username': username ?? 'unknown',
         'device_model': deviceModel ?? 'unknown',

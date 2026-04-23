@@ -9,9 +9,7 @@ class WebNotificationService implements NotificationService {
 
   @override
   Future<void> initialize() async {
-    final token = await _fcm.getToken(vapidKey: 'BHfflPk3dkc5jRoLpgjVgZv6j1_hGsMjR3sJkBoaF0P32kNE0k5dLFhWqpMGkiXMCKb7v_gZuFHy1s_U9kg4ps8');
-    print('Web FCM Token: $token');
-
+    // Настраиваем слушатели сообщений (без запроса разрешения)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       _messageController.add(message.data);
     });
@@ -19,10 +17,35 @@ class WebNotificationService implements NotificationService {
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       _messageOpenedController.add(message.data);
     });
+
+    // Токен не получаем здесь — будем запрашивать явно
+    print('Web FCM listeners initialized');
+  }
+
+  /// Метод для вызова строго по клику пользователя (кнопка «Включить уведомления»)
+  Future<bool> requestPermission() async {
+    final settings = await _fcm.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      final token = await _fcm.getToken(
+        vapidKey: 'BHfflPk3dkc5jRoLpgjVgZv6j1_hGsMjR3sJkBoaF0P32kNE0k5dLFhWqpMGkiXMCKb7v_gZuFHy1s_U9kg4ps8',
+      );
+      print('Web FCM Token: $token');
+      return true;
+    }
+    return false;
   }
 
   @override
-  Future<String?> getToken() => _fcm.getToken(vapidKey: 'BHfflPk3dkc5jRoLpgjVgZv6j1_hGsMjR3sJkBoaF0P32kNE0k5dLFhWqpMGkiXMCKb7v_gZuFHy1s_U9kg4ps8');
+  Future<String?> getToken() async {
+    // При необходимости можно получить токен, но только после разрешения
+    return _fcm.getToken(
+      vapidKey: 'BHfflPk3dkc5jRoLpgjVgZv6j1_hGsMjR3sJkBoaF0P32kNE0k5dLFhWqpMGkiXMCKb7v_gZuFHy1s_U9kg4ps8',
+    );
+  }
 
   @override
   Stream<Map<String, dynamic>> get onMessage => _messageController.stream;
@@ -30,11 +53,7 @@ class WebNotificationService implements NotificationService {
   Stream<Map<String, dynamic>> get onMessageOpenedApp => _messageOpenedController.stream;
 
   @override
-  Future<void> showLocalNotification({
-    required String title,
-    required String body,
-    String? payload,
-  }) async {}
+  Future<void> showLocalNotification({required String title, required String body, String? payload}) async {}
 
   @override
   Future<void> showMessageNotification({
@@ -44,4 +63,10 @@ class WebNotificationService implements NotificationService {
     required String messageType,
     String? senderPhotoUrl,
   }) async {}
+
+  @override
+  Future<bool> isPermissionGranted() async {
+    final settings = await _fcm.getNotificationSettings();
+    return settings.authorizationStatus == AuthorizationStatus.authorized;
+  }
 }

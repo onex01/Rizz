@@ -6,12 +6,15 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import '../../../core/theme/theme_provider.dart'; 
 import '../../../core/settings/settings_provider.dart';
 import '../../../shared/services/firestore_service.dart';
 import '../../../shared/services/cache_service.dart';
 import '../../../shared/services/update_service.dart';
+import '../../../core/notification/notification_service.dart';
+import '../../../core/notification/mobile_notification_service.dart';
 import '../../../version.dart';
 import '../../profile/presentation/edit_profile_screen.dart';
 import 'log_viewer_screen.dart';
@@ -85,6 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildProfileSection(isLight),
                 const Divider(height: 1),
                 _buildAppearanceSection(settingsProvider, themeProvider, isLight),
+                _buildNotificationSection(isLight),
                 const Divider(height: 1),
                 _buildChatSection(isLight),
                 const Divider(height: 1),
@@ -199,6 +203,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
             showDialog(
               context: context,
               builder: (_) => const IconPickerDialog(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNotificationSection(bool isLight) {
+    final notificationService = GetIt.I<NotificationService>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            'Уведомления',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: isLight ? Colors.grey.shade700 : Colors.grey.shade400,
+            ),
+          ),
+        ),
+        FutureBuilder<bool>(
+          future: notificationService.isPermissionGranted(),
+          builder: (context, snapshot) {
+            final granted = snapshot.data ?? false;
+            return Column(
+              children: [
+                ListTile(
+                  leading: Icon(
+                    granted ? Icons.notifications_active : Icons.notifications_off,
+                    color: isLight ? Colors.grey.shade700 : Colors.grey.shade400,
+                  ),
+                  title: Text(
+                    granted ? 'Уведомления разрешены' : 'Уведомления отключены',
+                    style: TextStyle(color: isLight ? Colors.black87 : Colors.white),
+                  ),
+                  subtitle: Text(
+                    'Настройте получение сообщений',
+                    style: TextStyle(color: isLight ? Colors.grey.shade600 : Colors.grey.shade500),
+                  ),
+                ),
+                // Кнопка запроса разрешения на вебе
+                if (kIsWeb)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final result = await notificationService.requestPermission();
+                          setState(() {}); // обновить FutureBuilder
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  result ? 'Уведомления включены' : 'Разрешение не получено',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Запросить разрешение на уведомления'),
+                      ),
+                    ),
+                  ),
+                // Кнопка открытия системных настроек на мобильных
+                if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS))
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          // Предположим, что notificationService имеет метод openSettings,
+                          // мы его добавили в MobileNotificationService.
+                          // Так как NotificationService - интерфейс, можно проверить тип.
+                          final mobile = notificationService as MobileNotificationService; // если точно знаем тип
+                          await mobile.openSettings();
+                        },
+                        child: const Text('Открыть системные настройки'),
+                      ),
+                    ),
+                  ),
+              ],
             );
           },
         ),

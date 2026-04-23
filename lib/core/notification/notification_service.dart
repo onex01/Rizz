@@ -19,4 +19,7 @@ abstract class NotificationService {
     required String messageType,
     String? senderPhotoUrl,
   });
+
+  Future<bool> isPermissionGranted();
+  Future<bool> requestPermission();
 }
