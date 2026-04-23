@@ -1,5 +1,6 @@
 import 'package:Rizz/shared/services/audio_player_service.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'core/di/service_locator.dart';
 import 'core/logger/app_logger.dart';
 import 'core/notification/notification_service.dart';
 import 'shared/services/message_listener_service.dart';
+import 'shared/services/firestore_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -19,20 +21,36 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Регистрируем все сервисы
   await setupServiceLocator();
 
   final logger = GetIt.I<AppLogger>();
   await logger.init();
 
-  // === ИНИЦИАЛИЗАЦИЯ АУДИО — САМАЯ ВАЖНАЯ ЧАСТЬ ===
+  // Загружаем username текущего пользователя (если уже авторизован)
+  final currentUser = FirebaseAuth.instance.currentUser;
+  if (currentUser != null) {
+    try {
+      final fs = GetIt.I<FirestoreService>();
+      final doc = await fs.getUser(currentUser.uid);
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>?;
+        final username = data?['username'] as String?;
+        if (username != null && username.isNotEmpty) {
+          logger.setUsername(username);
+        }
+      }
+    } catch (_) {
+      // не критично – логи будут без username
+    }
+  }
+
+  // === ИНИЦИАЛИЗАЦИЯ АУДИО ===
   try {
     final audioService = GetIt.I<AudioPlayerService>();
     await audioService.init();
     logger.info('✅ AudioPlayerService initialized successfully');
   } catch (e, stack) {
     logger.error('❌ Failed to init AudioPlayerService', error: e, stack: stack);
-    // Не крашим приложение, если аудио не инициализировалось
   }
 
   // Deep links
@@ -55,12 +73,11 @@ void main() async {
     return true;
   };
 
-  // Уведомления и слушатель сообщений
   final notificationService = GetIt.I<NotificationService>();
   await notificationService.initialize();
- 
+
   final messageListener = GetIt.I<MessageListenerService>();
   messageListener.startListening();
- 
+
   runApp(const RizzApp());
 }

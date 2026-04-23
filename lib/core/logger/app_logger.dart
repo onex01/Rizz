@@ -8,10 +8,18 @@ enum LogLevel { debug, info, warning, error }
 class AppLogger {
   static const String _logFileName = 'rizz_log.txt';
   final RemoteLogger _remoteLogger;
+  final String _deviceId;
+  String? _username;
   File? _logFile;
   bool _initialized = false;
 
-  AppLogger(this._remoteLogger);
+  AppLogger(this._remoteLogger, {required String deviceId})
+      : _deviceId = deviceId;
+
+  /// Установить имя пользователя (вызвать после загрузки профиля)
+  void setUsername(String username) {
+    _username = username;
+  }
 
   Future<void> init() async {
     if (_initialized) return;
@@ -57,6 +65,8 @@ class AppLogger {
         level: levelStr,
         summary: summary,
         details: details,
+        deviceId: _deviceId,
+        username: _username,
       );
     }
   }

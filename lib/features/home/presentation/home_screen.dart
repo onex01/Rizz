@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:Rizz/features/settings/presentation/changelog_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -12,6 +13,7 @@ import '../../contacts/presentation/contacts_screen.dart';
 import '../../profile/presentation/profile_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 import '../widgets/chat_list.dart';
+import '../../../version.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -33,6 +35,15 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isBarVisible = true;
   bool _isTablet = false;
 
+  String _appVersion = AppVersion.version;
+
+  Future<void> _getAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    setState(() {
+      _appVersion = packageInfo.version;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _searchFocusNode.unfocus();
     });
+    _getAppVersion();
   }
 
   @override
@@ -433,10 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => ChangelogScreen()));
                 },
-                child: const Text(
-                  'Версия 0.1.103',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                ),
+                child: Text('Версия: $_appVersion', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               ),
           TextField(
             controller: _searchController,

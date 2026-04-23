@@ -1,10 +1,10 @@
-// lib/core/di/service_locator.dart
 import 'package:Rizz/shared/services/audio_player_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';                                    // <-- добавлено
 
 import '../logger/app_logger.dart';
 import '../logger/remote_logger.dart';
@@ -28,13 +28,23 @@ import '../../shared/services/changelog_service.dart';
 
 final sl = GetIt.instance;
 
+/// Генерирует или получает сохранённый уникальный идентификатор установки
+Future<String> _getOrCreateDeviceId() async {
+  final prefs = sl<SharedPreferences>();
+  String? id = prefs.getString('device_id');
+  if (id == null) {
+    id = const Uuid().v4();
+    await prefs.setString('device_id', id);
+  }
+  return id;
+}
+
 Future<void> setupServiceLocator() async {
   // Внешние зависимости
   final prefs = await SharedPreferences.getInstance();
   sl.registerSingleton<SharedPreferences>(prefs);
   sl.registerSingleton<FirebaseAuth>(FirebaseAuth.instance);
   sl.registerLazySingleton<AudioPlayerService>(() => AudioPlayerService());
-  // ВАЖНО: FirebaseFirestore.instance используется БЕЗ скобок ()
   sl.registerSingleton<FirebaseFirestore>(FirebaseFirestore.instance);
   sl.registerSingleton<FirebaseStorage>(FirebaseStorage.instance);
 
@@ -43,7 +53,8 @@ Future<void> setupServiceLocator() async {
 
   // Логгер
   sl.registerSingleton<RemoteLogger>(RemoteLogger());
-  sl.registerSingleton<AppLogger>(AppLogger(sl<RemoteLogger>()));
+  final deviceId = await _getOrCreateDeviceId();
+  sl.registerSingleton<AppLogger>(AppLogger(sl<RemoteLogger>(), deviceId: deviceId));
 
   // Уведомления
   sl.registerSingleton<NotificationService>(await createNotificationService());
@@ -67,10 +78,8 @@ Future<void> setupServiceLocator() async {
   sl.registerLazySingleton<UpdateService>(() => UpdateService());
   sl.registerLazySingleton<MessageFileCache>(() => MessageFileCache());
   sl.registerLazySingleton<UserCacheService>(() => UserCacheService());
-  
-  // ИСПРАВЛЕНО: Убираем передачу sl<FirebaseFirestore>(), так как ChunkedFileService ожидает 0 аргументов
-   sl.registerLazySingleton<ChangelogService>(() => ChangelogService());
-   sl.registerLazySingleton<ChunkedFileService>(() => ChunkedFileService());
+  sl.registerLazySingleton<ChangelogService>(() => ChangelogService());
+  sl.registerLazySingleton<ChunkedFileService>(() => ChunkedFileService());
 
   // Репозитории фич
   sl.registerLazySingleton<ChatRepository>(() => ChatRepositoryImpl(

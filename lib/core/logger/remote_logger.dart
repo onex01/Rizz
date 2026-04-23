@@ -6,18 +6,30 @@ import '../../version.dart';
 import '../utils/device_info.dart';
 
 class RemoteLogger {
-  static const String _apiUrl = 'https://rizz.onex01.ru/api/logs/';
+  static const String _apiUrl = 'https://logs.rizzdp.ru/';
 
+  /// Отправка лога на сервер.
+  ///
+  /// [deviceId] – уникальный идентификатор устройства/пользователя.
+  /// [username] – имя пользователя (если доступно).
+  /// Остальные параметры заполняются из [DeviceInfo.gather()] автоматически.
   Future<void> sendLog({
     required String level,
     required String summary,
     String? details,
+    required String deviceId,
+    String? username,
     Map<String, dynamic>? metadata,
   }) async {
     if (kDebugMode) return;
 
     try {
       final deviceInfo = await DeviceInfo.gather();
+      
+      // Извлекаем модель устройства и версию ОС из собранных данных
+      final deviceModel = deviceInfo['device_model']?.toString();
+      final osVersion = deviceInfo['os_version']?.toString();
+
       final fullMetadata = {
         ...?metadata,
         'device': deviceInfo,
@@ -31,6 +43,10 @@ class RemoteLogger {
         'timestamp': DateTime.now().toIso8601String(),
         'appVersion': AppVersion.fullVersion,
         'platform': Platform.operatingSystem,
+        'device_id': deviceId,
+        'username': username ?? 'unknown',
+        'device_model': deviceModel ?? 'unknown',
+        'os_version': osVersion ?? 'unknown',
       });
 
       final response = await http.post(
