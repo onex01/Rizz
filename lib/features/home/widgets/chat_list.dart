@@ -276,7 +276,8 @@ class _ChatListState extends State<ChatList> with AutomaticKeepAliveClientMixin<
 Future<void> _loadUserInfoIfNeeded(List<QueryDocumentSnapshot> chats) async {
   final Set<String> uidsToLoad = {};
   for (var doc in chats) {
-    final data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>?;
+    if (data == null) continue;
     final participants = List<String>.from(data['participants'] ?? []);
     for (var uid in participants) {
       if (uid != widget.currentUserId && !_userNicknames.containsKey(uid)) {

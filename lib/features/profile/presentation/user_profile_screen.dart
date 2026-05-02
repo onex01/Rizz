@@ -46,6 +46,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _loadUserData() async {
     try {
       final doc = await _firestoreService.getUser(widget.userId);
+      if (!doc.exists || !mounted) return;
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data == null) return;
       if (doc.exists && mounted) {
         final data = doc.data() as Map<String, dynamic>;
         setState(() {
@@ -76,8 +79,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     try {
       final doc = await _firestoreService.getUser(_currentUser.uid);
       if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        final friends = List<String>.from(data['friends'] ?? []);
+        final data = doc.data() as Map<String, dynamic>?;
+        final friends = List<String>.from(data?['friends'] ?? []);
         setState(() => _isFriend = friends.contains(widget.userId));
       }
     } catch (e) {

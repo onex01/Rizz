@@ -39,12 +39,9 @@ class FileConverterService {
   static Future<File> _writeFile(List<int> bytes, String fileName) async {
     final tempDir = Directory.systemTemp;
     final file = File('${tempDir.path}/$fileName');
-
-    // Удаляем старый пустой файл, если он есть
+    
     if (await file.exists()) {
-      if (await file.length() == 0) {
-        await file.delete();
-      }
+      await file.delete(); // всегда удаляем старый
     }
 
     await file.writeAsBytes(bytes, flush: true);

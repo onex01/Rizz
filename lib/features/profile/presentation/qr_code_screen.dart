@@ -18,7 +18,7 @@ class QrCodeScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
-            onPressed: () => Share.share('$nickname в Rizz: $profileUrl'),
+            onPressed: () => SharePlus.instance.share(ShareParams(text: '$nickname в Rizz: $profileUrl')),
           ),
         ],
       ),

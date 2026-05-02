@@ -59,10 +59,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: isLight ? Colors.black.withOpacity(0.07) : Colors.white.withOpacity(0.07),
+                      color: isLight ? Colors.black.withValues(alpha: 0.07) : Colors.white.withValues(alpha: 0.07),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isLight ? Colors.black.withOpacity(0.12) : Colors.white.withOpacity(0.12),
+                        color: isLight ? Colors.black.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.12),
                         width: 0.5,
                       ),
                     ),
@@ -107,11 +107,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
               child: Container(
                 decoration: BoxDecoration(
                   color: isLight
-                      ? Colors.white.withOpacity(0.78)
-                      : const Color(0xFF1C1C1D).withOpacity(0.7),
+                      ? Colors.white.withValues(alpha: 0.78)
+                      : const Color(0xFF1C1C1D).withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(100),
                   border: Border.all(
-                    color: isLight ? Colors.black.withOpacity(0.12) : Colors.white.withOpacity(0.1),
+                    color: isLight ? Colors.black.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.1),
                     width: 0.5,
                   ),
                 ),
@@ -127,7 +127,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         height: 38,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isLight ? Colors.black.withOpacity(0.06) : Colors.white.withOpacity(0.1),
+                          color: isLight ? Colors.black.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.1),
                         ),
                         child: Icon(
                           CupertinoIcons.paperclip,
@@ -194,7 +194,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                                     height: 38,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: isLight ? Colors.black.withOpacity(0.06) : Colors.white.withOpacity(0.1),
+                                      color: isLight ? Colors.black.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.1),
                                     ),
                                     child: Icon(CupertinoIcons.mic, color: isLight ? CupertinoColors.systemGrey : Colors.grey, size: 24),
                                   ),

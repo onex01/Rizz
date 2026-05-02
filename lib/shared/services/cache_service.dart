@@ -1,11 +1,5 @@
-// ================================================
-// ОБНОВЛЁННЫЙ СЕРВИС КЭША (MessageFileCache) (илюха пидорас, не меняй)
-// ================================================
-// lib/shared/services/cache_service.dart 
-
 import 'dart:io';
 import 'package:get_it/get_it.dart';
-
 import '../../../core/logger/app_logger.dart';
 import 'file_converter_service.dart';
 
@@ -14,8 +8,63 @@ class MessageFileCache {
   factory MessageFileCache() => _instance;
   MessageFileCache._internal();
 
-  final Map<String, File> _memoryCache = {};
-  final Map<String, Future<File?>> _pendingConversions = {}; // ← ЗАЩИТА ОТ RACE CONDITION
+  final Map<String, File> _memoryCache = {}; // для старых hex
+  final Map<String, Future<File?>> _pendingConversions = {};
+
+  // Новый кэш в памяти для файлов, скачанных по URL
+  final Map<String, File> _urlMemoryCache = {};
+
+  static const int maxCacheBytes = 50 * 1024 * 1024; // 50 MB
+
+  Future<void> _enforceCacheLimit() async {
+    final dir = Directory('${Directory.systemTemp.path}/media_cache');
+    if (!await dir.exists()) return;
+    final files = <FileSystemEntity>[];
+    int totalSize = 0;
+    await for (var entity in dir.list()) {
+      if (entity is File) {
+        final length = await entity.length();
+        files.add(entity);
+        totalSize += length;
+      }
+    }
+    if (totalSize > maxCacheBytes) {
+      // сортируем по дате создания (старые в начале)
+      files.sort((a, b) => a.statSync().changed.compareTo(b.statSync().changed));
+      for (var file in files) {
+        if (totalSize <= maxCacheBytes) break;
+        final size = await (file as File).length();
+        await (file as File).delete();
+        totalSize -= size;
+      }
+    }
+  }
+
+  /// Получить файл из кэша по URL (сначала память, потом диск)
+  Future<File?> getCachedFile(String url) async {
+    if (_urlMemoryCache.containsKey(url)) return _urlMemoryCache[url];
+    final hash = _hash(url);
+    final file = File('${Directory.systemTemp.path}/media_cache/$hash');
+    if (await file.exists()) {
+      _urlMemoryCache[url] = file;
+      return file;
+    }
+    return null;
+  }
+
+  /// Сохранить файл в кэш для указанного URL
+  Future<void> cacheFile(String url, File source) async {
+    final hash = _hash(url);
+    final dir = Directory('${Directory.systemTemp.path}/media_cache');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final target = File('${dir.path}/$hash');
+    await source.copy(target.path);
+    _urlMemoryCache[url] = target;
+  }
+
+  String _hash(String input) {
+    return input.hashCode.toRadixString(16);
+  }
 
   Future<File?> getOrConvert(String messageId, Map<String, dynamic> msgData) async {
   if (_memoryCache.containsKey(messageId)) {
@@ -74,12 +123,11 @@ class MessageFileCache {
     }
   }
 
-  /// Полная очистка кэша (диск + память) — уже использовался в настройках
   Future<void> clearCache() async {
     final tempDir = Directory.systemTemp;
     try {
-      final entities = tempDir.listSync(recursive: false);
-      for (var entity in entities) {
+      // Удаляем старые файлы msg_*, avatar_*
+      for (var entity in tempDir.listSync(recursive: false)) {
         if (entity is File) {
           final name = entity.path.split('/').last;
           if (name.startsWith('msg_') || name.startsWith('avatar_')) {
@@ -87,8 +135,14 @@ class MessageFileCache {
           }
         }
       }
+      // Удаляем папку media_cache
+      final mediaCacheDir = Directory('${tempDir.path}/media_cache');
+      if (await mediaCacheDir.exists()) {
+        await mediaCacheDir.delete(recursive: true);
+      }
       _memoryCache.clear();
       _pendingConversions.clear();
+      _urlMemoryCache.clear();
       GetIt.I<AppLogger>().info('MessageFileCache: кэш полностью очищен');
     } catch (e) {
       GetIt.I<AppLogger>().error('MessageFileCache.clearCache error', error: e);
@@ -98,20 +152,32 @@ class MessageFileCache {
   void clearMemoryCache() {
     _memoryCache.clear();
     _pendingConversions.clear();
+    _urlMemoryCache.clear();
   }
 
-  /// Для настроек (уже работал)
+  /// Обновлённый метод для настроек: видит и старые, и новые файлы
   Future<Map<String, dynamic>> getCacheInfo() async {
     final tempDir = Directory.systemTemp;
     final List<String> files = [];
     int totalSizeBytes = 0;
 
     try {
+      // Старые файлы
       for (var entity in tempDir.listSync(recursive: false)) {
         if (entity is File) {
           final name = entity.path.split('/').last;
           if (name.startsWith('msg_') || name.startsWith('avatar_')) {
             files.add(name);
+            totalSizeBytes += await entity.length();
+          }
+        }
+      }
+      // Файлы из media_cache
+      final mediaCacheDir = Directory('${tempDir.path}/media_cache');
+      if (await mediaCacheDir.exists()) {
+        await for (var entity in mediaCacheDir.list(recursive: false)) {
+          if (entity is File) {
+            files.add('media_cache/${entity.path.split('/').last}');
             totalSizeBytes += await entity.length();
           }
         }

@@ -6,7 +6,9 @@ abstract class ChatRepository {
   Future<void> sendMessage(String chatId, Message message);
   Stream<QuerySnapshot> getMessages(String chatId);
   Stream<QuerySnapshot> getChats(String userId);
-  Future<void> updateLastMessage(String chatId, String preview, String type);
+  Future<void> updateLastMessage(String chatId, String preview, String type, {String? senderId});
+  Future<void> insertLocalMessage(String chatId, Map<String, dynamic> data, String docId);
+  Future<void> updateMessage(String chatId, String messageId, Map<String, dynamic> data);
 }
 
 class ChatRepositoryImpl implements ChatRepository {
@@ -54,11 +56,21 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<void> updateLastMessage(String chatId, String preview, String type) async {
-    await _firestore.collection('chats').doc(chatId).update({
-      'lastMessage': preview,
-      'lastMessageType': type,
+  Future<void> updateLastMessage(String chatId, String message, String type, {String? senderId}) async {
+    final updateData = <String, dynamic>{
+      'lastMessage': message,
       'lastMessageTime': FieldValue.serverTimestamp(),
-    });
+      'lastMessageType': type,
+      if (senderId != null) 'lastMessageSenderId': senderId,
+    };
+    await _firestore.collection('chats').doc(chatId).update(updateData);
+  }
+
+  Future<void> insertLocalMessage(String chatId, Map<String, dynamic> data, String docId) async {
+    await _firestore.collection('chats').doc(chatId).collection('messages').doc(docId).set(data);
+  }
+
+  Future<void> updateMessage(String chatId, String messageId, Map<String, dynamic> data) async {
+    await _firestore.collection('chats').doc(chatId).collection('messages').doc(messageId).update(data);
   }
 }

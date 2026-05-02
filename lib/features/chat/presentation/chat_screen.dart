@@ -12,12 +12,12 @@ import 'package:get_it/get_it.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
-import '../../../core/logger/app_logger.dart'; 
+import '../../../core/logger/app_logger.dart';
 import '../../../core/settings/settings_provider.dart';
-import '../../../shared/services/firestore_service.dart'; 
+import '../../../shared/services/firestore_service.dart';
 import '../../../shared/services/voice_service.dart';
-import '../../../shared/services/chunked_file_service.dart';
 import '../../profile/presentation/user_profile_screen.dart';
+import '../../../shared/services/media_api_service.dart';
 import '../data/chat_repository.dart';
 import '../domain/message.dart';
 import '../widgets/message_list.dart';
@@ -37,19 +37,18 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateMixin {
   final _currentUser = FirebaseAuth.instance.currentUser!;
   final _messageController = TextEditingController();
+  final _mediaApiService = GetIt.I<MediaApiService>();
   final _scrollController = ScrollController();
   final GlobalKey _textFieldKey = GlobalKey();
   File? _otherUserAvatarFile;
 
-  // Инжектированные зависимости
   final _audioPlayerService = GetIt.I<AudioPlayerService>();
   final _chatRepository = GetIt.I<ChatRepository>();
   final _firestoreService = GetIt.I<FirestoreService>();
-  final _logger = GetIt.I<AppLogger>(); 
-  final _chunkedFileService = GetIt.I<ChunkedFileService>();
+  final _logger = GetIt.I<AppLogger>();
 
   String? _otherUserNickname;
-  bool? _isOnlineInChat; 
+  bool? _isOnlineInChat;
   DateTime? _lastSeen;
   bool _isTyping = false;
   StreamSubscription? _chatStatusSubscription;
@@ -62,7 +61,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   String? _otherPinnedSongDuration;
   String? _otherPinnedSongLargeFileId;
 
-  // === ГЛОБАЛЬНЫЙ ПЛЕЕР ===
   bool _isPlayerVisible = false;
   String? _nowPlayingTitle;
   String? _nowPlayingArtist;
@@ -92,7 +90,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     _audioPlayerService.durationStream.listen((dur) {
       if (mounted) setState(() => _totalDuration = dur ?? Duration.zero);
     });
- 
+
     _scrollController.addListener(() {
       if (_scrollController.offset > 300 && !_showScrollToBottom) {
         setState(() => _showScrollToBottom = true);
@@ -210,11 +208,10 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     }
   }
 
-  // ==================== ОТПРАВКА СООБЩЕНИЙ ====================
   void _playSendAnimation(String text, Color bubbleColor) {
     final renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
-    
+
     final offset = renderBox.localToGlobal(Offset.zero);
     final width = renderBox.size.width;
 
@@ -266,7 +263,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
- 
+
     await _firestoreService.updateChat(widget.chatId, {
       'typingUsers': FieldValue.arrayRemove([_currentUser.uid])
     });
@@ -274,7 +271,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     HapticFeedback.lightImpact();
 
     final settings = Provider.of<SettingsProvider>(context, listen: false);
-     
     _playSendAnimation(text, settings.accentColor);
 
     final message = Message(
@@ -285,7 +281,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       replyToMessageId: _replyingToId,
       repliedMessageText: _replyingToText,
     );
- 
+
     _messageController.clear();
     setState(() {
       _replyingToId = null;
@@ -293,20 +289,251 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     });
 
     await _chatRepository.sendMessage(widget.chatId, message);
-    await _chatRepository.updateLastMessage(widget.chatId, text, 'text');
-
+    await _chatRepository.updateLastMessage(widget.chatId, text, 'text', senderId: _currentUser.uid);
     _scrollToBottom();
   }
 
-  Future<void> _sendImage() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85, maxWidth: 800);
-    if (picked == null) return;
+  // ==================== НОВЫЕ МЕТОДЫ ОТПРАВКИ МЕДИА ====================
+  Future<void> _uploadAndSendMessage(File file, String caption, String typeKey) async {
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+    final fileSize = await file.length();
+    final fileName = file.path.split('/').last;
 
-    await _sendMediaMessage(
-      file: File(picked.path),
-      type: 'image_hex',
-      previewText: '📷 Фото',
+    // Вставляем сообщение-заглушку с локальным путём и статусом uploading
+    await _chatRepository.insertLocalMessage(widget.chatId, {
+      'senderId': _currentUser.uid,
+      'text': caption.isNotEmpty ? caption : '',
+      'timestamp': Timestamp.now(),
+      'type': '${typeKey}_uploading',
+      'mediaData': {
+        'localPath': file.path,
+        'fileName': fileName,
+        'fileSize': fileSize,
+        'previewText': caption.isNotEmpty ? caption : (typeKey == 'image' ? '📷 Фото' : (typeKey == 'video' ? '🎥 Видео' : '📎 Файл')),
+      },
+      'replyToMessageId': _replyingToId,
+      'repliedMessageText': _replyingToText,
+    }, tempId);
+
+    setState(() {
+      _replyingToId = null;
+      _replyingToText = null;
+    });
+
+    try {
+      final mediaUrl = await _mediaApiService.uploadFile(
+        file,
+        maxWidth: typeKey == 'image' ? 1280 : null,
+        quality: typeKey == 'image' ? 85 : null,
+      );
+      if (mediaUrl == null) {
+        await _chatRepository.updateMessage(widget.chatId, tempId, {'isUploadFailed': true});
+        _showToast('Не удалось загрузить файл');
+        return;
+      }
+
+      await _chatRepository.updateMessage(widget.chatId, tempId, {
+        'type': typeKey,
+        'mediaData': {
+          'mediaUrl': mediaUrl,
+          'fileName': fileName,
+          'fileSize': fileSize,
+        },
+        'text': caption.isNotEmpty ? caption : '',
+      });
+      await _chatRepository.updateLastMessage(widget.chatId, caption.isNotEmpty ? caption : fileName, typeKey, senderId: _currentUser.uid);
+    } catch (e) {
+      _logger.error('Failed to upload media', error: e);
+      await _chatRepository.updateMessage(widget.chatId, tempId, {'isUploadFailed': true});
+      _showToast('Ошибка отправки файла');
+    }
+  }
+
+  Future<void> _pickMediaFromGallery() async {
+    final result = await FilePicker.pickFiles(type: FileType.media, allowMultiple: true);
+    if (result == null || result.files.isEmpty) return;
+
+    int total = result.files.length;
+    bool autoLoad = total <= 10; // автоматически загружаем если файлов <= 10
+    for (int i = 0; i < total; i++) {
+      final file = result.files[i];
+      if (file.path == null) continue;
+      final ext = file.name.split('.').last.toLowerCase();
+      final isVideo = ['mp4', 'mov', 'avi', 'mkv'].contains(ext);
+      final typeKey = isVideo ? 'video' : 'image';
+
+      // если много файлов, спрашиваем подпись для каждого, иначе только для первого?
+      // для простоты: спросим подпись только для первого, остальные без подписи
+      String caption = '';
+      if (i == 0) {
+        caption = await _askCaption(file.name);
+      }
+      if (!autoLoad && (typeKey == 'file' || typeKey == 'video')) {
+        // Для видео и файлов при большом количестве можно спросить подтверждение
+        // но здесь просто загружаем с уведомлением
+      }
+      await _uploadAndSendMessage(File(file.path!), caption, typeKey);
+    }
+  }
+
+  Future<void> _takePictureOrVideo() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.camera_alt),
+            title: const Text('Снять фото'),
+            onTap: () => Navigator.pop(context, 'photo'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.videocam),
+            title: const Text('Снять видео'),
+            onTap: () => Navigator.pop(context, 'video'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+
+    final picker = ImagePicker();
+    if (result == 'photo') {
+      final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 85, maxWidth: 800);
+      if (picked != null) {
+        final caption = await _askCaption('photo.jpg');
+        await _uploadAndSendMessage(File(picked.path), caption, 'image');
+      }
+    } else {
+      final picked = await picker.pickVideo(source: ImageSource.camera);
+      if (picked != null) {
+        final caption = await _askCaption('video.mp4');
+        await _uploadAndSendMessage(File(picked.path), caption, 'video');
+      }
+    }
+  }
+
+  Future<String> _askCaption(String fileName) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Подпись к "$fileName"'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Добавить подпись...'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, ''),
+            child: const Text('Пропустить'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Готово'),
+          ),
+        ],
+      ),
+    );
+    return result ?? '';
+  }
+
+  Future<void> _startVoiceRecording() async {
+    await VoiceService.startRecording();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => VoiceRecorderDialog(
+        onSend: (File file) async {
+          await _uploadAndSendMessage(file, '', 'voice');
+        },
+      ),
+    );
+  }
+
+  // Обновлённое меню вложений
+  void _showAttachmentMenu() {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          child: Container(
+            color: isLight ? Colors.white.withValues(alpha: 0.95) : Colors.black.withValues(alpha: 0.95),
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isLight ? Colors.grey.shade300 : Colors.grey.shade600,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue.withValues(alpha: 0.1),
+                      child: const Icon(Icons.photo_library, color: Colors.blue),
+                    ),
+                    title: const Text('Галерея (фото/видео)'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _pickMediaFromGallery();
+                    },
+                  ),
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.green.withValues(alpha: 0.1),
+                      child: const Icon(Icons.camera_alt, color: Colors.green),
+                    ),
+                    title: const Text('Камера'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _takePictureOrVideo();
+                    },
+                  ),
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                      child: const Icon(Icons.insert_drive_file, color: Colors.orange),
+                    ),
+                    title: const Text('Файл'),
+                    onTap: () async {
+                      Navigator.pop(context);
+                      final result = await FilePicker.pickFiles(type: FileType.any);
+                      if (result != null && result.files.single.path != null) {
+                        final file = File(result.files.single.path!);
+                        final caption = await _askCaption(result.files.single.name);
+                        await _uploadAndSendMessage(file, caption, 'file');
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.red.withValues(alpha: 0.1),
+                      child: const Icon(Icons.mic, color: Colors.red),
+                    ),
+                    title: const Text('Голосовое сообщение'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _startVoiceRecording();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -318,171 +545,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
         curve: Curves.easeOutCubic,
       );
     }
-  }
-
-  Future<void> _sendFile() async {
-    final FilePickerResult? result = await FilePicker.pickFiles();
-    if (result == null || result.files.isEmpty) return;
-
-    final file = File(result.files.first.path!);
-    
-    await _sendMediaMessage(
-      file: file,
-      type: 'file_hex',
-      previewText: '📎 ${file.path.split('/').last}',
-    );
-  }
-
-  Future<void> _takePhoto() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 85, maxWidth: 800);
-    if (picked == null) return;
-
-    await _sendMediaMessage(
-      file: File(picked.path),
-      type: 'image_hex',
-      previewText: '📷 Фото',
-    );
-  }
-
-  Future<void> _playOtherUserSong() async {
-  if (_otherPinnedSongLargeFileId == null) {
-    _showToast('Песня пока не доступна');
-    return;
-  }
-
-  setState(() {
-    _nowPlayingTitle = _otherPinnedSongTitle;
-    _nowPlayingArtist = _otherPinnedSongArtist;
-    _isPlayerVisible = true;
-    _isPlaying = true;
-  });
-
-  try {
-    final bytes = await _chunkedFileService.downloadLargeFile(_otherPinnedSongLargeFileId!);
-    if (bytes.isEmpty) throw Exception("Файл пуст");
-
-    final tempDir = Directory.systemTemp;
-    final safeFileName = 'pinned_song_${DateTime.now().millisecondsSinceEpoch}.mp3';
-    final tempFile = File('${tempDir.path}/$safeFileName');
-
-    await tempFile.writeAsBytes(bytes, flush: true);
-
-    await _audioPlayerService.playVoice(
-      tempFile.path,
-      title: _otherPinnedSongTitle ?? 'Песня',
-      artist: _otherPinnedSongArtist,
-    );
-  } catch (e, stack) {
-    _logger.error('Failed to play pinned song from HEX chunks', error: e, stack: stack);
-    _showToast('Ошибка загрузки трека');
-    setState(() => _isPlayerVisible = false);
-  }
-}
-
-  Future<void> _sendMediaMessage({
-    required File file,
-    required String type,
-    required String previewText,
-  }) async {
-    try {
-      final fileSize = await file.length();
-      final fileName = file.path.split('/').last;
-      final fileExtension = fileName.split('.').last;
- 
-      if (fileSize > 500 * 1024) {
-        await _sendLargeFile(file, fileName, fileSize, previewText);
-        return;
-      }
-
-      final bytes = await file.readAsBytes();
-      final hexData = _bytesToHex(bytes);
-
-      final mediaData = {
-        'hexData': hexData,
-        'fileName': fileName,
-        'fileSize': fileSize,
-        'fileExtension': fileExtension,
-      };
-
-      final message = Message(
-        id: '',
-        senderId: _currentUser.uid,
-        text: '',
-        timestamp: Timestamp.now(),
-        replyToMessageId: _replyingToId,
-        repliedMessageText: _replyingToText,
-        type: type,
-        mediaData: mediaData,
-      );
-
-      await _chatRepository.sendMessage(widget.chatId, message);
-      await _chatRepository.updateLastMessage(widget.chatId, previewText, type);
-      setState(() {
-        _replyingToId = null;
-        _replyingToText = null;
-      });
-      _scrollToBottom();
-    } catch (e, stack) {
-      _logger.error('Failed to send media message', error: e, stack: stack);
-      _showToast('Ошибка отправки файла');
-    }
-  }
-
-  Future<void> _sendLargeFile(File file, String fileName, int fileSize, String previewText) async {
-    try {
-      final bytes = await file.readAsBytes();
-      final fileId = await _chunkedFileService.uploadLargeFile(bytes, fileName);
-
-      final mediaData = {
-        'largeFileId': fileId,
-        'fileName': fileName,
-        'fileSize': fileSize,
-      };
-
-      final message = Message(
-        id: '',
-        senderId: _currentUser.uid,
-        text: '',
-        timestamp: Timestamp.now(),
-        replyToMessageId: _replyingToId,
-        repliedMessageText: _replyingToText,
-        type: 'large_file',
-        mediaData: mediaData,
-      );
-
-      await _chatRepository.sendMessage(widget.chatId, message);
-      await _chatRepository.updateLastMessage(widget.chatId, '📁 $fileName', 'large_file');
-      setState(() {
-        _replyingToId = null;
-        _replyingToText = null;
-      });
-      _scrollToBottom();
-    } catch (e, stack) {
-      _logger.error('Failed to send large file', error: e, stack: stack);
-      _showToast('Ошибка отправки большого файла');
-    }
-  }
- 
-  String _bytesToHex(List<int> bytes) {
-    return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-  }
-
-  Future<void> _startVoiceRecording() async {
-    await VoiceService.startRecording();
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => VoiceRecorderDialog(
-        onSend: (File file) async { 
-          await _sendMediaMessage(
-            file: file,
-            type: 'voice',
-            previewText: '🎤 Голосовое',
-          );
-        },
-      ),
-    );
   }
 
   void _handleReply(String messageId, String text) {
@@ -564,60 +626,35 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     if (diff.inDays < 7) return 'Был(а) ${diff.inDays} дн назад';
     return 'Был(а) ${_lastSeen!.day}.${_lastSeen!.month}.${_lastSeen!.year}';
   }
- 
-  void _showAttachmentMenu() {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-          child: Container(
-            color: isLight ? Colors.white.withOpacity(0.95) : Colors.black.withOpacity(0.95),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isLight ? Colors.grey.shade300 : Colors.grey.shade600,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  ListTile(
-                    leading: CircleAvatar(backgroundColor: Colors.blue.withValues(alpha: 0.1), child: const Icon(Icons.photo_library, color: Colors.blue)),
-                    title: const Text('Фото из галереи'),
-                    onTap: () { Navigator.pop(context); _sendImage(); },
-                  ),
-                  ListTile(
-                    leading: CircleAvatar(backgroundColor: Colors.green.withValues(alpha: 0.1), child: const Icon(Icons.insert_drive_file, color: Colors.green)),
-                    title: const Text('Файл'),
-                    onTap: () { Navigator.pop(context); _sendFile(); },
-                  ),
-                  ListTile(
-                    leading: CircleAvatar(backgroundColor: Colors.purple.withValues(alpha: 0.1), child: const Icon(Icons.camera_alt, color: Colors.purple)),
-                    title: const Text('Снять фото'),
-                    onTap: () { Navigator.pop(context); _takePhoto(); },
-                  ),
-                  ListTile(
-                    leading: CircleAvatar(backgroundColor: Colors.red.withValues(alpha: 0.1), child: const Icon(Icons.mic, color: Colors.red)),
-                    title: const Text('Голосовое сообщение'),
-                    onTap: () { Navigator.pop(context); _startVoiceRecording(); },
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+
+  Future<void> _playOtherUserSong() async {
+    if (_otherPinnedSongLargeFileId == null) {
+      _showToast('Песня пока не доступна');
+      return;
+    }
+
+    setState(() {
+      _nowPlayingTitle = _otherPinnedSongTitle;
+      _nowPlayingArtist = _otherPinnedSongArtist;
+      _isPlayerVisible = true;
+      _isPlaying = true;
+    });
+
+    try {
+      final url = '${MediaApiService.baseUrl}/download/$_otherPinnedSongLargeFileId';
+      final file = await _mediaApiService.downloadFile(url);
+      if (file == null) throw Exception('Не удалось скачать файл');
+
+      await _audioPlayerService.playVoice(
+        file.path,
+        title: _otherPinnedSongTitle ?? 'Песня',
+        artist: _otherPinnedSongArtist,
+      );
+    } catch (e, stack) {
+      _logger.error('Failed to play pinned song', error: e, stack: stack);
+      _showToast('Ошибка загрузки трека');
+      setState(() => _isPlayerVisible = false);
+    }
   }
 
   @override
@@ -639,13 +676,8 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      // ЕСТЕСТВЕННЫЙ ПОДЪЁМ ВСЕГО КОНТЕНТА (сообщения + input + player + кнопка вниз)
-      // при открытии клавиатуры. Дополнительный ручной подъём через viewInsets.bottom УБРАН.
-      // Лаги клавиатуры устранены за счёт RepaintBoundary вокруг всех BackdropFilter.
       resizeToAvoidBottomInset: true,
       backgroundColor: bgColor,
-      
-      // ==================== БЛЮР TOP-BAR ====================
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(kToolbarHeight),
         child: ClipRect(
@@ -653,21 +685,26 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
             filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
             child: AppBar(
               backgroundColor: isLight
-                  ? Colors.white.withOpacity(0.65)
-                  : Colors.black.withOpacity(0.65),
+                  ? Colors.white.withValues(alpha: 0.65)
+                  : Colors.black.withValues(alpha: 0.65),
               foregroundColor: isLight ? Colors.black : Colors.white,
               elevation: 0,
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(0.5),
                 child: Container(
-                  color: isLight ? Colors.black.withOpacity(0.1) : Colors.white.withOpacity(0.1),
+                  color: isLight ? Colors.black.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.1),
                   height: 0.5,
                 ),
               ),
               title: GestureDetector(
                 onTap: () {
                   if (widget.otherUserId != _currentUser.uid) {
-                    Navigator.push(context, CupertinoPageRoute(builder: (_) => UserProfileScreen(userId: widget.otherUserId)));
+                    Navigator.push(
+                      context,
+                      CupertinoPageRoute(
+                        builder: (_) => UserProfileScreen(userId: widget.otherUserId),
+                      ),
+                    );
                   }
                 },
                 child: Row(
@@ -709,10 +746,8 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
           ),
         ),
       ),
-
       body: Stack(
         children: [
-          // 1. Фон и Сообщения
           ChatBackground(
             backgroundColor: bgColor,
             wallpaperUrl: settings.wallpaperUrl,
@@ -727,11 +762,9 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
               onEdit: _handleEdit,
               onDeleteMe: (id) => _handleDelete(id, forEveryone: false),
               onDeleteAll: (id) => _handleDelete(id, forEveryone: true),
-              onForward: _handleForward, 
+              onForward: _handleForward,
             ),
           ),
- 
-          // ==================== БЛЮР-Виджет музыки собеседника ====================
           if (_otherPinnedSongTitle != null && _otherPinnedSongTitle!.isNotEmpty)
             Positioned(
               top: kToolbarHeight + 60,
@@ -746,11 +779,11 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
                         color: isLight
-                            ? Colors.white.withOpacity(0.65)
-                            : Colors.black.withOpacity(0.65),
+                            ? Colors.white.withValues(alpha: 0.65)
+                            : Colors.black.withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: isLight ? Colors.black.withOpacity(0.1) : Colors.white.withOpacity(0.1),
+                          color: isLight ? Colors.black.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.1),
                           width: 0.5,
                         ),
                       ),
@@ -780,8 +813,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                 ),
               ),
             ),
-
-          // 2. Плавающая кнопка "Вниз"
           Positioned(
             bottom: 150,
             right: 16,
@@ -800,11 +831,11 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                         height: 40,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: (isLight 
-                                  ? Colors.white.withOpacity(0.4) 
-                                  : Colors.grey[800]!.withOpacity(0.4)),
+                          color: (isLight
+                              ? Colors.white.withValues(alpha: 0.4)
+                              : Colors.grey[800]!.withValues(alpha: 0.4)),
                           border: Border.all(
-                            color: (isLight ? Colors.white : Colors.white10).withOpacity(0.2),
+                            color: (isLight ? Colors.white : Colors.white10).withValues(alpha: 0.2),
                             width: 0.5,
                           ),
                         ),
@@ -820,8 +851,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
-
-          // 3. ПЛАВАЮЩЕЕ ПОЛЕ ВВОДА (ChatInputBar)
           Positioned(
             left: 16,
             right: 16,
@@ -839,8 +868,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
               onSubmitted: settings.sendByEnter ? () => _sendMessage() : null,
             ),
           ),
-
-          // ==================== ГЛОБАЛЬНЫЙ ПЛЕЕР ====================
           if (_isPlayerVisible)
             Positioned(
               bottom: 88,
@@ -854,18 +881,18 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isLight 
-                            ? Colors.white.withOpacity(0.92)
-                            : const Color(0xFF1C1C1D).withOpacity(0.92),
+                        color: isLight
+                            ? Colors.white.withValues(alpha: 0.92)
+                            : const Color(0xFF1C1C1D).withValues(alpha: 0.92),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: isLight ? Colors.black.withOpacity(0.08) : Colors.white.withOpacity(0.08),
+                          color: isLight ? Colors.black.withValues(alpha: 0.08) : Colors.white.withValues(alpha: 0.08),
                           width: 0.5,
                         ),
                       ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        children: [ 
+                        children: [
                           Row(
                             children: [
                               const Icon(Icons.music_note, color: Colors.deepPurple, size: 24),
@@ -891,8 +918,10 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                                 ),
                               ),
                               IconButton(
-                                icon: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, 
-                                           color: Colors.deepPurple),
+                                icon: Icon(
+                                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                                  color: Colors.deepPurple,
+                                ),
                                 onPressed: () async {
                                   if (_isPlaying) {
                                     await _audioPlayerService.pause();
@@ -910,9 +939,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                               ),
                             ],
                           ),
-
                           const SizedBox(height: 8),
- 
                           Row(
                             children: [
                               Text(
@@ -928,16 +955,17 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                                   ),
                                   child: Slider(
                                     value: _currentPosition.inMilliseconds.toDouble().clamp(
-                                          0,
-                                          (_totalDuration.inMilliseconds > 0 
-                                              ? _totalDuration.inMilliseconds 
-                                              : 1).toDouble(),
-                                        ),
-                                    max: _totalDuration.inMilliseconds.toDouble() > 0 
-                                        ? _totalDuration.inMilliseconds.toDouble() 
+                                      0,
+                                      (_totalDuration.inMilliseconds > 0
+                                          ? _totalDuration.inMilliseconds
+                                          : 1)
+                                          .toDouble(),
+                                    ),
+                                    max: _totalDuration.inMilliseconds.toDouble() > 0
+                                        ? _totalDuration.inMilliseconds.toDouble()
                                         : 1,
                                     activeColor: Colors.deepPurple,
-                                    inactiveColor: Colors.grey.withOpacity(0.3),
+                                    inactiveColor: Colors.grey.withValues(alpha: 0.3),
                                     onChanged: (value) {
                                       _audioPlayerService.seek(Duration(milliseconds: value.toInt()));
                                     },
@@ -961,4 +989,4 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       ),
     );
   }
-} 
+}

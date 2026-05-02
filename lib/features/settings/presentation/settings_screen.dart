@@ -336,13 +336,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Container(
               decoration: BoxDecoration(
                 color: isLight
-                    ? Colors.white.withOpacity(0.75)
-                    : const Color(0xFF1C1C1D).withOpacity(0.75),
+                    ? Colors.white.withValues(alpha: 0.75)
+                    : const Color(0xFF1C1C1D).withValues(alpha: 0.75),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: isLight
-                      ? Colors.black.withOpacity(0.1)
-                      : Colors.white.withOpacity(0.1),
+                      ? Colors.black.withValues(alpha: 0.1)
+                      : Colors.white.withValues(alpha: 0.1),
                   width: 0.5,
                 ),
               ),
@@ -508,7 +508,7 @@ Widget _buildStatTile(String label, String value, bool isLight) {
   return Container(
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: isLight ? Colors.black.withOpacity(0.05) : Colors.white.withOpacity(0.05),
+      color: isLight ? Colors.black.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.05),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Column(

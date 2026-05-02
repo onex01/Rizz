@@ -30,7 +30,7 @@ class Message {
       'repliedMessageText': repliedMessageText,
       'type': type,
     };
-    if (mediaData != null) map.addAll(mediaData!);
+    if (mediaData != null) map['mediaData'] = mediaData;
     return map;
   }
 }

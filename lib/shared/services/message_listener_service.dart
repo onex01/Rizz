@@ -40,17 +40,20 @@ class MessageListenerService {
           final otherUserId = participants.firstWhere((id) => id != user.uid);
 
           if (lastMessageTime != null && lastMessageTime.toDate().isAfter(_lastResumed)) {
-            final senderDoc = await _firestore.collection('users').doc(otherUserId).get();
+            final senderDoc = await _firestore.collection('users').doc(otherUserId).get(); // получаем имя другого участника
             final senderName = senderDoc.data()?['nickname'] ?? 'Пользователь';
-
-            await _notificationService.showMessageNotification(
-              chatId: change.doc.id,
-              senderName: senderName,
-              content: lastMessage ?? '',
-              messageType: lastMessageType,
-            );
+            
+            // Показываем уведомление только если сообщение не от текущего пользователя
+            if (lastMessageSenderId != user.uid) {
+              await _notificationService.showMessageNotification(
+                chatId: change.doc.id,
+                senderName: senderName,
+                content: lastMessage ?? '',
+                messageType: lastMessageType,
+              );
+            }
           }
-
+          
           // if (lastMessageTime.toDate().isAfter(_lastResumed) && otherUserId != user.uid) {
           // // отправляем уведомление только если сообщение не от текущего пользователя 
           // }

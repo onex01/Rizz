@@ -1,4 +1,5 @@
 import 'package:Rizz/shared/services/audio_player_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -14,10 +15,14 @@ import 'core/notification/notification_service.dart';
 import 'shared/services/message_listener_service.dart';
 import 'shared/services/firestore_service.dart';
 import 'firebase_options.dart';
+import 'dart:convert';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  PaintingBinding.instance.imageCache.maximumSize = 200;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 50 << 20; // 50 MB
+  
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -83,5 +88,26 @@ void main() async {
   final messageListener = GetIt.I<MessageListenerService>();
   messageListener.startListening();
 
+  @pragma('vm:entry-point')
+  Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    // Минимальная инициализация DI, чтобы получить NotificationService
+    await setupServiceLocator();
+    final notificationService = GetIt.I<NotificationService>();
+    
+    // Извлекаем данные из уведомления и показываем локальное
+    final title = message.notification?.title ?? 'Новое сообщение';
+    final body = message.notification?.body ?? '';
+    await notificationService.showLocalNotification(
+      title: title,
+      body: body,
+      payload: jsonEncode(message.data),
+    );
+  }
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
   runApp(const RizzApp());
 }

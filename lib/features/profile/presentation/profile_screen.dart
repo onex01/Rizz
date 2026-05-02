@@ -163,7 +163,7 @@ Future<void> _playPinnedSong() async {
           ),
           ElevatedButton.icon(
             onPressed: () {
-              Share.share('Мой Rizz профиль: rizz://profile/${_user.uid}');
+              SharePlus.instance.share(ShareParams(text: 'Мой Rizz профиль: rizz://profile/${_user.uid}'));
             },
             icon: const Icon(Icons.share),
             label: const Text('Поделиться'),

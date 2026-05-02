@@ -25,6 +25,7 @@ import '../../features/chat/domain/use_cases/get_chats_use_case.dart';
 import '../../shared/services/message_listener_service.dart';
 import '../../shared/services/chunked_file_service.dart';
 import '../../shared/services/changelog_service.dart';
+import '../../shared/services/media_api_service.dart';
 
 final sl = GetIt.instance;
 
@@ -47,6 +48,7 @@ Future<void> setupServiceLocator() async {
   sl.registerLazySingleton<AudioPlayerService>(() => AudioPlayerService());
   sl.registerSingleton<FirebaseFirestore>(FirebaseFirestore.instance);
   sl.registerSingleton<FirebaseStorage>(FirebaseStorage.instance);
+  sl.registerLazySingleton<MediaApiService>(() => MediaApiService());
 
   // Платформа
   sl.registerSingleton<PlatformInfo>(getPlatformInfo());
