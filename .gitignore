@@ -4,6 +4,7 @@
 .flutter-plugins-dependencies
 .packages
 .pub-cache/
+.history
 .pub/
 build/
 flutter_*.png

@@ -72,6 +72,7 @@ class MessageBubble extends StatelessWidget {
     switch (messageType) {
       case 'text':
         return TextMessageBuilder.build(
+          context: context,
           msgData: msgData,
           isMe: isMe,
           isLight: isLight,

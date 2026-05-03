@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+enum ChatBackgroundType { color, gradient, image, procedural }
 
 class SettingsProvider extends ChangeNotifier {
   String? _wallpaperUrl;
@@ -20,7 +23,18 @@ class SettingsProvider extends ChangeNotifier {
   Color? get chatBackgroundColor => _chatBackgroundColor;
   bool get showAvatars => _showAvatars;
   bool get sendByEnter => _sendByEnter;
-  
+
+  ChatBackgroundType _chatBgType = ChatBackgroundType.procedural;
+  Color? _chatSolidColor;
+  Color? _chatGradientColor1;
+  Color? _chatGradientColor2;
+  String? _chatImagePath;
+
+  ChatBackgroundType get chatBgType => _chatBgType;
+  Color? get chatSolidColor => _chatSolidColor;
+  Color? get chatGradientColor1 => _chatGradientColor1;
+  Color? get chatGradientColor2 => _chatGradientColor2;
+  String? get chatImagePath => _chatImagePath;
 
   SettingsProvider() {
     _loadSettings();
@@ -36,7 +50,50 @@ class SettingsProvider extends ChangeNotifier {
     final bgColorValue = prefs.getInt('chatBackgroundColor');
     if (bgColorValue != null) _chatBackgroundColor = Color(bgColorValue);
     _showAvatars = prefs.getBool('showAvatars') ?? true;
-    _sendByEnter = prefs.getBool('sendByEnter') ?? false;
+    _sendByEnter = prefs.getBool('sendByEnter') ?? (!Platform.isAndroid && !Platform.isIOS);
+    final bgTypeIndex = prefs.getInt('chatBgType') ?? 3; // procedural по умолчанию
+    _chatBgType = ChatBackgroundType.values[bgTypeIndex];
+    final solidColor = prefs.getInt('chatSolidColor');
+    if (solidColor != null) _chatSolidColor = Color(solidColor);
+    final gradColor1 = prefs.getInt('chatGradientColor1');
+    if (gradColor1 != null) _chatGradientColor1 = Color(gradColor1);
+    final gradColor2 = prefs.getInt('chatGradientColor2');
+    if (gradColor2 != null) _chatGradientColor2 = Color(gradColor2);
+    _chatImagePath = prefs.getString('chatImagePath');
+    notifyListeners();
+  }
+
+  Future<void> setChatBackgroundType(ChatBackgroundType type) async {
+    _chatBgType = type;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('chatBgType', type.index);
+    notifyListeners();
+  }
+
+  Future<void> setChatSolidColor(Color color) async {
+    _chatSolidColor = color;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('chatSolidColor', color.toARGB32());
+    notifyListeners();
+  }
+
+  Future<void> setChatGradientColors(Color color1, Color color2) async {
+    _chatGradientColor1 = color1;
+    _chatGradientColor2 = color2;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('chatGradientColor1', color1.toARGB32());
+    await prefs.setInt('chatGradientColor2', color2.toARGB32());
+    notifyListeners();
+  }
+
+  Future<void> setChatImagePath(String? path) async {
+    _chatImagePath = path;
+    final prefs = await SharedPreferences.getInstance();
+    if (path != null) {
+      await prefs.setString('chatImagePath', path);
+    } else {
+      await prefs.remove('chatImagePath');
+    }
     notifyListeners();
   }
 

@@ -58,6 +58,7 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
     final settings = Provider.of<SettingsProvider>(context);
     final accentColor = settings.accentColor;
     final fontSize = settings.fontSize;
+    
 
     return StreamBuilder<QuerySnapshot>(
       stream: _chatRepository.getMessages(widget.chatId),
@@ -68,8 +69,10 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
           return const Center(child: Text('Нет сообщений. Напишите первое!'));
         }
-
-        final messages = snapshot.data!.docs;
+        
+        final messages = snapshot.data!.docs
+          .where((doc) => (doc.data() as Map<String, dynamic>)['isDeleted'] != true)
+          .toList();
 
         return ListView.builder(
           controller: widget.scrollController,
@@ -84,20 +87,6 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
             final messageType = msgData['type'] ?? 'text';
             final messageId = messages[index].id;
             final messageText = msgData['text'] ?? msgData['fileName'] ?? '';
-
-            if (msgData['isDeleted'] == true) {
-              return Align(
-                alignment: Alignment.center,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    'Сообщение удалено',
-                    style: TextStyle(color: isLight ? Colors.grey.shade500 : Colors.grey.shade600,
-                        fontStyle: FontStyle.italic, fontSize: fontSize - 2),
-                  ),
-                ),
-              );
-            }
 
             return Dismissible(
               key: ValueKey(messageId),

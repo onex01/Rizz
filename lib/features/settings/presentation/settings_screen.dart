@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:provider/provider.dart';
 import '../../../core/theme/theme_provider.dart'; 
@@ -15,6 +14,8 @@ import '../../../shared/services/cache_service.dart';
 import '../../../shared/services/update_service.dart';
 import '../../../core/notification/notification_service.dart';
 import '../../../core/notification/mobile_notification_service.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../version.dart';
 import '../../profile/presentation/edit_profile_screen.dart';
 import 'log_viewer_screen.dart';
@@ -38,10 +39,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _buildNumber = AppVersion.buildNumber.toString();
   bool _verboseLogging = false;
 
-  @override
+    @override
   void initState() {
     super.initState();
     _getAppVersion();
+    _loadVerboseSetting();
   }
 
   Future<void> _getAppVersion() async {
@@ -49,6 +51,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _appVersion = packageInfo.version;
       _buildNumber = packageInfo.buildNumber;
+    });
+  }
+
+  Future<void> _loadVerboseSetting() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _verboseLogging = prefs.getBool('verbose_logging') ?? false;
+      GetIt.I<AppLogger>().setVerboseLogging(_verboseLogging);
     });
   }
 
@@ -599,9 +609,11 @@ Widget _buildStatTile(String label, String value, bool isLight) {
           title: const Text('Подробное логирование'),
           subtitle: const Text('Записывать все события, а не только ошибки'),
           value: _verboseLogging,
-          onChanged: (value) {
+          onChanged: (value) async {
             setState(() => _verboseLogging = value);
             GetIt.I<AppLogger>().setVerboseLogging(value);
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool('verbose_logging', value);
           },
         ),
         ListTile(

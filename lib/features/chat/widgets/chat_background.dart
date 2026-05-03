@@ -1,47 +1,49 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
 import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../core/settings/settings_provider.dart';
 
 class ChatBackground extends StatelessWidget {
   final Widget child;
-  final Color backgroundColor;
-  final String? wallpaperUrl;
-  final bool enableEffects;
-
-  const ChatBackground({
-    super.key,
-    required this.child,
-    required this.backgroundColor,
-    this.wallpaperUrl,
-    this.enableEffects = false,
-  });
+  const ChatBackground({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {
-    // Определяем фон
-    Widget background;
-
-    if (wallpaperUrl != null && wallpaperUrl!.isNotEmpty) {
-      background = Image.network(
-        wallpaperUrl!,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-      );
-    } else if (enableEffects) {
-      background = const _ProceduralGradientBackground();
-    } else {
-      background = Container(color: backgroundColor);
-    }
-
-    // Возвращаем Stack с фоном и контентом
+    final settings = context.watch<SettingsProvider>();
     return Stack(
       children: [
-        // Фоновый слой
-        background,
-        // Основной контент (сообщения и т.д.)
+        _buildBackground(settings),
         child,
       ],
     );
+  }
+
+  Widget _buildBackground(SettingsProvider settings) {
+    switch (settings.chatBgType) {
+      case ChatBackgroundType.color:
+        return Container(color: settings.chatSolidColor ?? Colors.white);
+      case ChatBackgroundType.gradient:
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                settings.chatGradientColor1 ?? Colors.blue,
+                settings.chatGradientColor2 ?? Colors.purple,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        );
+      case ChatBackgroundType.image:
+        if (settings.chatImagePath != null) {
+          return Image.file(File(settings.chatImagePath!), fit: BoxFit.cover, width: double.infinity, height: double.infinity);
+        }
+        return const _ProceduralGradientBackground();
+      case ChatBackgroundType.procedural:
+        return const _ProceduralGradientBackground();
+    }
   }
 }
 

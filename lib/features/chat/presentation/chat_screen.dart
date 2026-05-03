@@ -24,6 +24,7 @@ import '../widgets/chat_input_bar.dart';
 import 'chat_attachment_menu.dart';
 import 'chat_media_picker.dart';
 import 'chat_upload_helper.dart';
+import 'wallpaper_picker_dialog.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -85,6 +86,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     _loadOtherUserInfo();
     _setupRealTimeChatStatus();
     _joinChat();
+    _createChatDocumentIfMissing();
     _audioPlayerService.isPlayingStream.listen((playing) {
       if (mounted) setState(() => _isPlaying = playing);
     });
@@ -156,6 +158,19 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       'onlineUsers': FieldValue.arrayRemove([_currentUser.uid]),
       'lastSeen': FieldValue.serverTimestamp(),
     });
+  }
+
+  Future<void> _createChatDocumentIfMissing() async {
+    final chatRef = FirebaseFirestore.instance.collection('chats').doc(widget.chatId);
+    final doc = await chatRef.get();
+    if (!doc.exists) {
+      await chatRef.set({
+        'participants': [_currentUser.uid, widget.otherUserId],
+        'lastMessage': '',
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        'lastMessageType': 'empty',
+      });
+    }
   }
 
   void _updateTypingStatus() {
@@ -421,6 +436,53 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     );
   }
 
+  // Новые методы для контекстного меню
+  Future<void> _clearChat() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Очистить переписку'),
+        content: const Text('Все сообщения будут удалены без возможности восстановления.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Очистить')),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      try {
+        await _chatRepository.deleteAllMessages(widget.chatId);
+        _showToast('Переписка очищена');
+      } catch (e) {
+        _logger.error('Failed to clear chat', error: e);
+        _showToast('Ошибка при очистке');
+      }
+    }
+  }
+
+  Future<void> _toggleMute() async {
+    try {
+      final chatRef = FirebaseFirestore.instance.collection('chats').doc(widget.chatId);
+      final doc = await chatRef.get();
+      final isMuted = doc.data()?['isMuted'] ?? false;
+      await chatRef.update({'isMuted': !isMuted});
+      _showToast(isMuted ? 'Уведомления включены' : 'Уведомления отключены');
+    } catch (e) {
+      _logger.error('Mute toggle failed', error: e);
+    }
+  }
+
+  void _showSearch() {
+    _showToast('Поиск сообщений — в разработке');
+  }
+
+  void _showWallpaperPicker() {
+    showDialog(
+      context: context,
+      builder: (_) => const WallpaperPickerDialog(),
+    );
+  }
+
   @override
   void dispose() {
     _leaveChat();
@@ -502,6 +564,33 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                 ),
               ),
               centerTitle: false,
+              actions: [
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: isLight ? Colors.black : Colors.white),
+                  onSelected: (value) async {
+                    switch (value) {
+                      case 'clear':
+                        await _clearChat();
+                        break;
+                      case 'mute':
+                        await _toggleMute();
+                        break;
+                      case 'search':
+                        _showSearch();
+                        break;
+                      case 'wallpaper':
+                        _showWallpaperPicker();
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'clear', child: Text('Очистить переписку')),
+                    const PopupMenuItem(value: 'mute', child: Text('Отключить уведомления')),
+                    const PopupMenuItem(value: 'search', child: Text('Поиск сообщений')),
+                    const PopupMenuItem(value: 'wallpaper', child: Text('Обои чата')),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -509,9 +598,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       body: Stack(
         children: [
           ChatBackground(
-            backgroundColor: bgColor,
-            wallpaperUrl: settings.wallpaperUrl,
-            enableEffects: settings.useProceduralBackground,
             child: MessageList(
               chatId: widget.chatId,
               currentUserId: _currentUser.uid,

@@ -9,6 +9,7 @@ abstract class ChatRepository {
   Future<void> updateLastMessage(String chatId, String preview, String type, {String? senderId});
   Future<void> insertLocalMessage(String chatId, Map<String, dynamic> data, String docId);
   Future<void> updateMessage(String chatId, String messageId, Map<String, dynamic> data);
+  Future<void> deleteAllMessages(String chatId);
 }
 
 class ChatRepositoryImpl implements ChatRepository {
@@ -34,6 +35,17 @@ class ChatRepositoryImpl implements ChatRepository {
       _logger.error('Failed to send message', error: e, stack: stack);
       rethrow;
     }
+  }
+
+  @override
+  Future<void> deleteAllMessages(String chatId) async {
+    final messagesRef = _firestore.collection('chats').doc(chatId).collection('messages');
+    final messagesSnapshot = await messagesRef.get();
+    final batch = _firestore.batch();
+    for (var doc in messagesSnapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
   }
 
   @override
