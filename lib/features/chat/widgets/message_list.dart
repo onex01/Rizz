@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:Rizz/shared/services/cache_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -158,20 +157,6 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
         return;
       }
 
-      // Старая логика с кэшем
-      final cachedFile = await GetIt.I<MessageFileCache>().getOrConvert(
-        msgData['id'] ?? '',
-        msgData,
-      );
-      if (cachedFile != null) {
-        final platformInfo = GetIt.I<PlatformInfo>();
-        final downloadsDir = await platformInfo.getDownloadsDirectory();
-        if (downloadsDir != null) {
-          final savedFile = File('${downloadsDir.path}/${msgData['fileName'] ?? 'downloaded_file'}');
-          await cachedFile.copy(savedFile.path);
-          Fluttertoast.showToast(msg: 'Файл сохранён в Загрузки');
-        }
-      }
     } catch (e, stack) {
       _logger.error('Download file error', error: e, stack: stack);
       Fluttertoast.showToast(msg: 'Ошибка сохранения файла');

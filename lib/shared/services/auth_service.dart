@@ -69,7 +69,7 @@ class AuthServiceImpl implements AuthService {
         clientId: '931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com',
       );
 
-      final account = await GoogleSignIn.instance.authenticate()!;
+      final account = await GoogleSignIn.instance.authenticate();
 
       final auth = await account.authentication;
       final credential = GoogleAuthProvider.credential(

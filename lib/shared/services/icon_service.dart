@@ -1,46 +1,43 @@
 import 'package:dynamic_icon_changer/dynamic_icon_changer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class IconService {
   static final _iconChanger = DynamicIconChanger();
 
-  static const List<String> androidAliases = [
-    '.MainActivityDefault',
-    '.MainActivityBlack',
-    '.MainActibityBlackWhite',
-    '.MainActivityBrize',
-    '.MainActivityIngYang',
-    '.MainActivityWhite',
+  /// Все алиасы в манифесте (должны совпадать с android:name)
+  static const List<String> _allAliases = [
+    'MainActivityDefault',
+    'MainActivityBlack',
+    'MainActivityDark',
+    'MainActivityWhite',
+    'MainActivityBlackWhite',
+    'MainActivityBrize',
+    'MainActivityIngYang',
   ];
 
-  /// Установить иконку по ключу (например, 'black', 'blue_white', 'default')
-  static Future<void> setIcon(String key, {bool relaunch = true}) async {
-    String? iosIconName;
-    switch (key) {
-      case 'default':
-        iosIconName = null;
-        break;
-      case 'black':
-        iosIconName = 'black';
-        break;
-      case 'black_white':
-        iosIconName = 'black_white';
-        break;
-      case 'brize':
-        iosIconName = 'brize';
-        break;
-      case 'ing_yang':
-        iosIconName = 'ing_yang';
-        break;
-      case 'white':
-        iosIconName = 'white';
-        break;
-      default:
-        return;
+  /// Ключ для SharedPreferences
+  static const String _prefsKey = 'app_icon_alias';
+
+  /// Установить иконку по ключу (например, 'MainActivityBlack').
+  /// Если переданный alias ещё не активирован, деактивирует все остальные.
+  static Future<void> setIcon(String alias) async {
+    if (!_allAliases.contains(alias)) {
+      throw ArgumentError('Неизвестный alias: $alias');
     }
+    // Устанавливаем иконку, передавая только этот алиас как активный
     await _iconChanger.setIcon(
-      iosIconName,
-      androidActiveAliases: androidAliases,
-      relaunch: relaunch,
+      null, // iOS icon name – не используется
+      androidActiveAliases: [alias],
+      relaunch: true,
     );
+    // Сохраняем выбор
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKey, alias);
+  }
+
+  /// Получить текущий сохранённый alias (по умолчанию MainActivityDefault)
+  static Future<String> getCurrentAlias() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_prefsKey) ?? 'MainActivityDefault';
   }
 }

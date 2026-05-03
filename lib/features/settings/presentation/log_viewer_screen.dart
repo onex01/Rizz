@@ -31,10 +31,29 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
   bool _isLoading = true;
   final _logger = GetIt.I<AppLogger>();
 
+  final ScrollController _scrollController = ScrollController();
+  bool _showScrollToBottom = false;
+
   @override
   void initState() {
+    _scrollController.addListener(() {
+      if (_scrollController.offset < _scrollController.position.maxScrollExtent - 200) {
+        if (!_showScrollToBottom) setState(() => _showScrollToBottom = true);
+      } else {
+        if (_showScrollToBottom) setState(() => _showScrollToBottom = false);
+      }
+    });
+
     super.initState();
     _loadLogs();
+  }
+
+  void _scrollToBottom() {
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _loadLogs() async {
@@ -160,23 +179,38 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Логи приложения'),
+        title: const Text('Логи'),
         actions: [
+          if (_showScrollToBottom)
+            IconButton(
+              icon: const Icon(Icons.arrow_downward),
+              onPressed: _scrollToBottom,
+              tooltip: 'Вниз',
+            ),
           IconButton(
-            icon: const Icon(Icons.copy),
-            onPressed: _copyAllLogs,
-            tooltip: 'Копировать все',
+            icon: const Icon(Icons.delete_forever),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Удалить все логи?'),
+                  content: const Text('Это действие нельзя отменить.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Удалить')),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                await _logger.clearLogs();
+                setState(() => _logs = []);
+              }
+            },
+            tooltip: 'Очистить логи',
           ),
-          IconButton(
-            icon: const Icon(Icons.save_alt),
-            onPressed: _saveLogsToFile,
-            tooltip: 'Сохранить в файл',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadLogs,
-            tooltip: 'Обновить',
-          ),
+          IconButton(icon: const Icon(Icons.copy), onPressed: _copyAllLogs, tooltip: 'Копировать все'),
+          IconButton(icon: const Icon(Icons.save_alt), onPressed: _saveLogsToFile, tooltip: 'Сохранить в файл'),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadLogs, tooltip: 'Обновить'),
         ],
       ),
       body: _isLoading

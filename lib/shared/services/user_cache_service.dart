@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'file_converter_service.dart';
+import 'package:get_it/get_it.dart';
+import 'cache_service.dart';
+import 'media_api_service.dart';
 
 class UserCacheService {
   static const String _nicknamePrefix = 'user_nickname_';
@@ -42,9 +44,16 @@ class UserCacheService {
   String? getAvatarHex(String uid) => _avatarHexs[uid];
 
   Future<File?> getAvatarFile(String uid) async {
-    final hex = getAvatarHex(uid);
-    if (hex == null) return null;
-    return await FileConverterService.hexToFile(hex, 'avatar_$uid.jpg');
+    final url = getAvatarUrl(uid);
+    if (url == null || url.isEmpty || !url.startsWith('http')) return null;
+    final cache = GetIt.I<MessageFileCache>();
+    File? cached = await cache.getCachedFile(url);
+    if (cached != null) return cached;
+    final downloaded = await GetIt.I<MediaApiService>().downloadFile(url);
+    if (downloaded != null) {
+      await cache.cacheFile(url, downloaded);
+    }
+    return downloaded;
   }
 
   Future<void> clear() async {
@@ -67,5 +76,18 @@ class UserCacheService {
     await prefs.remove('$_avatarHexPrefix$uid');
     _nicknames.remove(uid);
     _avatarHexs.remove(uid);
+  }
+
+  final Map<String, String?> _avatarUrls = {};
+
+  Future<void> cacheAvatarUrl(String uid, String url) async {
+    _avatarUrls[uid] = url;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('avatar_url_$uid', url);
+  }
+
+  String? getAvatarUrl(String uid) {
+    if (_avatarUrls.containsKey(uid)) return _avatarUrls[uid];
+    return null;
   }
 }

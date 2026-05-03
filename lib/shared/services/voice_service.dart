@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:just_audio/just_audio.dart';
 import 'package:record/record.dart'; 
+import 'package:just_audio/just_audio.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'file_converter_service.dart';
  
 class VoiceService {
   static final AudioRecorder _recorder = AudioRecorder();
@@ -31,17 +30,10 @@ class VoiceService {
   }
 
   static Future<void> sendVoiceMessage(String chatId, File file, {String? replyToMessageId}) async {
-    final bytes = await file.readAsBytes();
-    if (bytes.length > 500 * 1024) {
-      Fluttertoast.showToast(msg: 'Голосовое слишком большое, будет отправлено позже');
-      return;
-    }
-    final hexData = await FileConverterService.fileToHex(file);
     final messageData = {
       'senderId': FirebaseAuth.instance.currentUser!.uid,
       'type': 'voice',
       'duration': await _getDuration(file),
-      'hexData': hexData,
       'timestamp': FieldValue.serverTimestamp(),
       'replyToMessageId': replyToMessageId,
       'isRead': false,

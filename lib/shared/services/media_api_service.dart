@@ -1,5 +1,5 @@
 import 'dart:io';
-import "dart:convert";
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -9,26 +9,21 @@ class MediaApiService {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<String?> _getIdToken() async {
-    final user = _auth.currentUser;
-    if (user == null) return null;
-    return await user.getIdToken();
-  }
-
+  /// Возвращает текущий ID-токен (публичный, используется для стриминга)
   Future<String?> getToken() async {
     final user = _auth.currentUser;
     if (user == null) return null;
     return await user.getIdToken();
   }
 
-  /// Загружает файл на сервер с опциональными параметрами сжатия.
-  /// [maxWidth] — максимальная ширина изображения (если применимо), по умолчанию 1280.
-  /// [quality] — качество JPEG (0-100), по умолчанию 85.
+  /// Загружает файл на сервер.
+  /// [category] – одна из: image, video, audio, voice, file, avatar, music
   Future<String?> uploadFile(File file, {
     int? maxWidth,
     int? quality,
+    String category = 'image',
   }) async {
-    final token = await _getIdToken();
+    final token = await getToken();
     if (token == null) throw Exception('Not authenticated');
 
     final uri = Uri.parse('$baseUrl/upload');
@@ -36,12 +31,10 @@ class MediaApiService {
       ..headers['Authorization'] = 'Bearer $token'
       ..files.add(await http.MultipartFile.fromPath('file', file.path));
 
-    if (maxWidth != null) {
-      request.fields['max_width'] = maxWidth.toString();
-    }
-    if (quality != null) {
-      request.fields['quality'] = quality.toString();
-    }
+    // Категория и параметры сжатия
+    request.fields['category'] = category;
+    if (maxWidth != null) request.fields['max_width'] = maxWidth.toString();
+    if (quality != null) request.fields['quality'] = quality.toString();
 
     final response = await request.send();
     if (response.statusCode == 200) {
@@ -53,8 +46,9 @@ class MediaApiService {
     }
   }
 
+  /// Скачивает файл по полному URL
   Future<File?> downloadFile(String url) async {
-    final token = await _getIdToken();
+    final token = await getToken();
     if (token == null) throw Exception('Not authenticated');
 
     final response = await http.get(
@@ -74,17 +68,16 @@ class MediaApiService {
 
   String? _parseUrlFromResponse(String body) {
     try {
-      // Используем jsonDecode для надёжности, но можно и простой поиск
+      final map = jsonDecode(body);
+      return map['url'];
+    } catch (_) {
       final start = body.indexOf('"url":"');
       if (start != -1) {
         final begin = start + 7;
         final end = body.indexOf('"', begin);
         if (end != -1) return body.substring(begin, end);
       }
-      // Если не нашли, пробуем jsonDecode
-      final map = jsonDecode(body);
-      return map['url'];
-    } catch (_) {}
+    }
     return null;
   }
 }

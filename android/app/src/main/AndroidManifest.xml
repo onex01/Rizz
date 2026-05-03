@@ -46,8 +46,7 @@
 
         </activity>
 
-        
-        <activity-alias 
+        <activity-alias
             android:name=".MainActivityDefault"
             android:enabled="true"
             android:exported="true"
@@ -60,7 +59,20 @@
             </intent-filter>
         </activity-alias>
 
-        <activity-alias 
+        <activity-alias
+            android:name=".MainActivityBlack"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_black"
+            android:label="Rizz"
+            android:targetActivity="com.ryanheise.audioservice.AudioServiceActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
             android:name=".MainActivityDark"
             android:enabled="false"
             android:exported="true"
@@ -73,11 +85,50 @@
             </intent-filter>
         </activity-alias>
 
-        <activity-alias 
+        <activity-alias
             android:name=".MainActivityWhite"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_black_white"
+            android:label="Rizz"
+            android:targetActivity="com.ryanheise.audioservice.AudioServiceActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityBlackWhite"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_black_white"
+            android:label="Rizz"
+            android:targetActivity="com.ryanheise.audioservice.AudioServiceActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityBrize"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_brize"
+            android:label="Rizz"
+            android:targetActivity="com.ryanheise.audioservice.AudioServiceActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".MainActivityIngYang"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_ing_yang"
             android:label="Rizz"
             android:targetActivity="com.ryanheise.audioservice.AudioServiceActivity">
             <intent-filter>

@@ -1,72 +1,128 @@
 import 'package:flutter/material.dart';
-import '../../../shared/services/icon_service.dart';
+import '../../../../shared/services/icon_service.dart';
 
-class IconPickerDialog extends StatelessWidget {
+class IconPickerDialog extends StatefulWidget {
   const IconPickerDialog({super.key});
 
-  static const List<Map<String, dynamic>> icons = [
-    {'key': 'default', 'label': 'Стандартная', 'asset': 'assets/icons/default.png'},
-    {'key': 'black', 'label': 'Чёрная', 'asset': 'assets/icons/black.png'},
-    {'key': 'black _white', 'label': 'Чёрная с белым', 'asset': 'assets/icons/black_white.png'},
-    {'key': 'brize', 'label': 'Бриз', 'asset': 'assets/icons/brize.png'},
-    {'key': 'ing_yang', 'label': 'Инь-Ян', 'asset': 'assets/icons/ing_yang.png'},
-    {'key': 'white', 'label': 'Белая', 'asset': 'assets/icons/white.png'},
+  @override
+  State<IconPickerDialog> createState() => _IconPickerDialogState();
+}
+
+class _IconPickerDialogState extends State<IconPickerDialog> {
+  String _currentAlias = 'MainActivityDefault';
+  bool _loading = false;
+
+  // Список иконок с отображаемым названием и именем ассета (для картинки)
+  final _icons = [
+    _IconEntry('MainActivityDefault', 'Стандартная', Icons.phone_android, 'assets/icons/default.png'),
+    _IconEntry('MainActivityBlack', 'Чёрная', Icons.dark_mode, 'assets/icons/black.png'),
+    _IconEntry('MainActivityDark', 'Тёмная', Icons.nightlight_round, 'assets/icons/black.png'),
+    _IconEntry('MainActivityWhite', 'Белая', Icons.light_mode, 'assets/icons/white.png'),
+    _IconEntry('MainActivityBlackWhite', 'Чёрно-белая', Icons.contrast, 'assets/icons/black_white.png'),
+    _IconEntry('MainActivityBrize', 'Бриз', Icons.waves, 'assets/icons/brize.png'),
+    _IconEntry('MainActivityIngYang', 'Инь-Ян', Icons.balance, 'assets/icons/ing_yang.png'),
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _loadCurrent();
+  }
+
+  Future<void> _loadCurrent() async {
+    final alias = await IconService.getCurrentAlias();
+    setState(() => _currentAlias = alias);
+  }
+
+  Future<void> _apply(String alias) async {
+    setState(() => _loading = true);
+    try {
+      await IconService.setIcon(alias);
+      if (mounted) {
+        Navigator.pop(context, true); // сигнал, что иконка изменена
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Иконка изменена')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ошибка: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Выберите иконку'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: GridView.builder(
-          shrinkWrap: true,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            childAspectRatio: 1,
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Выберите иконку',
+            style: Theme.of(context).textTheme.titleLarge,
           ),
-          itemCount: icons.length,
-          itemBuilder: (context, index) {
-            final icon = icons[index];
-            return GestureDetector(
-              onTap: () async {
-                Navigator.pop(context);
-                await IconService.setIcon(icon['key'] as String);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Иконка "${icon['label']}" установлена')),
-                  );
-                }
-              },
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Image.asset(
-                      icon['asset'] as String,
-                      width: 64,
-                      height: 64,
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 16,
+            runSpacing: 16,
+            children: _icons.map((entry) {
+              final selected = entry.alias == _currentAlias;
+              return GestureDetector(
+                onTap: _loading ? null : () => _apply(entry.alias),
+                child: Container(
+                  width: 90,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey.shade300,
+                      width: selected ? 2 : 1,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    icon['label'] as String,
-                    style: const TextStyle(fontSize: 12),
-                    textAlign: TextAlign.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(entry.imageAsset, width: 48, height: 48, fit: BoxFit.contain),
+                      const SizedBox(height: 8),
+                      Text(
+                        entry.title,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            );
-          },
-        ),
+                ),
+              );
+            }).toList(),
+          ),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: CircularProgressIndicator(),
+            ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Отмена'),
-        ),
-      ],
     );
   }
+}
+
+class _IconEntry {
+  final String alias;
+  final String title;
+  final IconData icon; // запасной вариант
+  final String imageAsset;
+  const _IconEntry(this.alias, this.title, this.icon, this.imageAsset);
 }

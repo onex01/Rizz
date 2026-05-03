@@ -12,14 +12,21 @@ class AppLogger {
   String? _username;
   File? _logFile;
   bool _initialized = false;
+  bool _verboseLogging = false; // подробное логирование ВКЛ/ВЫКЛ
 
   AppLogger(this._remoteLogger, {required String deviceId})
       : _deviceId = deviceId;
 
-  /// Установить имя пользователя (вызвать после загрузки профиля)
   void setUsername(String username) {
     _username = username;
   }
+
+  /// Включить/выключить подробное логирование (info/debug).
+  void setVerboseLogging(bool enabled) {
+    _verboseLogging = enabled;
+  }
+  void enableVerboseLogging() => setVerboseLogging(true);
+  void disableVerboseLogging() => setVerboseLogging(false);
 
   Future<void> init() async {
     if (_initialized) return;
@@ -59,8 +66,8 @@ class AppLogger {
     if (details != null && details.isNotEmpty) {
       await _write('  Details: $details\n');
     }
-
-    if (level == LogLevel.error || level == LogLevel.warning) {
+    // Отправляем на сервер всегда ошибки и предупреждения, подробные логи — только если включён флаг
+    if (level == LogLevel.error || level == LogLevel.warning || _verboseLogging) {
       _remoteLogger.sendLog(
         level: levelStr,
         summary: summary,
@@ -72,10 +79,14 @@ class AppLogger {
   }
 
   Future<void> debug(String message) async {
-    if (kDebugMode) await log(LogLevel.debug, message);
+    if (_verboseLogging || kDebugMode) await log(LogLevel.debug, message);
   }
 
-  Future<void> info(String message) => log(LogLevel.info, message);
+  Future<void> info(String message) async {
+    if (_verboseLogging || kDebugMode) {
+      await log(LogLevel.info, message);
+    }
+  }
 
   Future<void> warning(String message, {String? details}) =>
       log(LogLevel.warning, message, details: details);
@@ -85,6 +96,18 @@ class AppLogger {
         ? 'Exception: $error\nStackTrace: $stack'
         : null;
     return log(LogLevel.error, message, details: details);
+  }
+
+  /// Полностью очистить файл логов (удалить все записи).
+  Future<void> clearLogs() async {
+    try {
+      if (_logFile != null && await _logFile!.exists()) {
+        await _logFile!.writeAsString('', mode: FileMode.write);
+        _write('=== Log cleared at ${DateTime.now()} ===\n');
+      }
+    } catch (e) {
+      debugPrint('Error clearing logs: $e');
+    }
   }
 
   File? getLogFile() => _logFile;

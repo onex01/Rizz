@@ -1,12 +1,8 @@
-
-import 'dart:io';
-
-import 'package:Rizz/shared/services/file_converter_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-
 import '../../../core/logger/app_logger.dart';
 import '../../../shared/services/firestore_service.dart';
 import '../../../shared/services/user_cache_service.dart';
@@ -34,12 +30,10 @@ class _ChatListState extends State<ChatList> with AutomaticKeepAliveClientMixin<
   final _userCache = GetIt.I<UserCacheService>();
   final _logger = GetIt.I<AppLogger>();
 
-
   final Map<String, String> _userNicknames = {};
   final Map<String, String> _userUsernames = {};
   final Map<String, String> _userPhotoUrls = {};
 
-  // НОВОЕ: кэш времени последнего сообщения и непрочитанных
   final Map<String, DateTime?> _lastMessageTimes = {};
   final Map<String, int> _unreadCounts = {};
 
@@ -71,7 +65,7 @@ class _ChatListState extends State<ChatList> with AutomaticKeepAliveClientMixin<
     final snapshot = await _firestoreService.getChats(widget.currentUserId).first;
     await _loadUserInfoIfNeeded(snapshot.docs);
   }
-  // ==================== ИСПРАВЛЕНО: заполняем время последнего сообщения ====================
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -143,7 +137,7 @@ class _ChatListState extends State<ChatList> with AutomaticKeepAliveClientMixin<
             );
             final isSelfChat = data['isSelfChat'] == true;
 
-            final displayName = isSelfChat 
+            final displayName = isSelfChat
                 ? 'Заметки'
                 : (_userNicknames[otherUserId] ?? otherUserId);
 
@@ -169,40 +163,16 @@ class _ChatListState extends State<ChatList> with AutomaticKeepAliveClientMixin<
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         leading: isSelfChat
-    ? const CircleAvatar(
-        radius: 28,
-        backgroundColor: Color(0xFFE0E0E0),
-        child: Icon(Icons.note_alt, size: 28, color: Colors.grey),
-      )
-    : (_userPhotoUrls[otherUserId]?.isNotEmpty == true
-        ? FutureBuilder<File?>(
-            future: FileConverterService.hexToFile(
-              _userPhotoUrls[otherUserId]!,
-              'avatar_${otherUserId}.jpg',
-            ),
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                return CircleAvatar(
-                  radius: 28,
-                  backgroundImage: FileImage(snapshot.data!),
-                );
-              }
-              return CircleAvatar(
-                radius: 28,
-                backgroundColor: Colors.grey.shade300,
-                child: Icon(Icons.person, size: 28, color: Colors.grey),
-              );
-            },
-          )
-        : CircleAvatar(
-            radius: 28,
-            backgroundColor: Colors.grey.shade300,
-            child: Icon(Icons.person, size: 28, color: Colors.grey),
-          )),
-                        title: Text(displayName, 
+                            ? const CircleAvatar(
+                                radius: 28,
+                                backgroundColor: Color(0xFFE0E0E0),
+                                child: Icon(Icons.note_alt, size: 28, color: Colors.grey),
+                              )
+                            : _buildOtherUserAvatar(otherUserId),
+                        title: Text(displayName,
                             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17)),
-                        subtitle: Text(lastMessage, 
-                            maxLines: 1, 
+                        subtitle: Text(lastMessage,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(color: Colors.grey.shade400, fontSize: 15)),
                         trailing: Row(
@@ -254,87 +224,101 @@ class _ChatListState extends State<ChatList> with AutomaticKeepAliveClientMixin<
       },
     );
   }
+
+  Widget _buildOtherUserAvatar(String otherUserId) {
+    final photoUrl = _userPhotoUrls[otherUserId];
+    if (photoUrl == null || photoUrl.isEmpty || !photoUrl.startsWith('http')) {
+      return CircleAvatar(
+        radius: 28, backgroundColor: Colors.grey.shade300,
+        child: const Icon(Icons.person, size: 28, color: Colors.grey),
+      );
+    }
+    return CircleAvatar(
+      radius: 28,
+      backgroundImage: CachedNetworkImageProvider(photoUrl),
+      onBackgroundImageError: (_, __) =>
+          const Icon(Icons.person, size: 28, color: Colors.grey),
+    );
+  }
+
   String _formatMessageTime(Timestamp? timestamp) {
     if (timestamp == null) return '';
-
     final dateTime = timestamp.toDate();
     final now = DateTime.now();
     final diff = now.difference(dateTime).inDays;
-
     if (diff == 0) {
-      // Сегодня — часы:минуты
       return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
     } else if (diff == 1) {
       return 'Вчера';
     } else {
-      // Старше — день.месяц
       return '${dateTime.day}.${dateTime.month.toString().padLeft(2, '0')}';
     }
   }
 
-  // ==================== ИСПРАВЛЕНО: подгрузка + надёжное сохранение в кэш ====================
-Future<void> _loadUserInfoIfNeeded(List<QueryDocumentSnapshot> chats) async {
-  final Set<String> uidsToLoad = {};
-  for (var doc in chats) {
-    final data = doc.data() as Map<String, dynamic>?;
-    if (data == null) continue;
-    final participants = List<String>.from(data['participants'] ?? []);
-    for (var uid in participants) {
-      if (uid != widget.currentUserId && !_userNicknames.containsKey(uid)) {
-        uidsToLoad.add(uid);
+  Future<void> _loadUserInfoIfNeeded(List<QueryDocumentSnapshot> chats) async {
+    final Set<String> uidsToLoad = {};
+    for (var doc in chats) {
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data == null) continue;
+      final participants = List<String>.from(data['participants'] ?? []);
+      for (var uid in participants) {
+        if (uid != widget.currentUserId && !_userNicknames.containsKey(uid)) {
+          uidsToLoad.add(uid);
+        }
       }
     }
-  }
-  if (uidsToLoad.isEmpty) return;
+    if (uidsToLoad.isEmpty) return;
 
-  // Сначала проверяем локальный кэш (ник + username + avatarHex)
-  for (var uid in uidsToLoad) {
-    final cachedNick = _userCache.getNickname(uid);
-    final cachedUsername = _userCache.getUsername(uid);
-    final cachedAvatarHex = _userCache.getAvatarHex(uid);   // ← НОВОЕ
-
-    if (cachedNick != null) _userNicknames[uid] = cachedNick;
-    if (cachedUsername != null) _userUsernames[uid] = cachedUsername;
-    if (cachedAvatarHex != null && cachedAvatarHex.isNotEmpty) {
-      _userPhotoUrls[uid] = cachedAvatarHex;   // используется в FutureBuilder
-    }
-  }
-
-  final uidsToFetch = uidsToLoad.where((uid) => !_userNicknames.containsKey(uid)).toList();
-  if (uidsToFetch.isEmpty) return;
-
-  try {
-    // Параллельная загрузка из Firestore
-    final futures = uidsToFetch.map((uid) => _firestoreService.getUser(uid)).toList();
-    final snapshots = await Future.wait(futures);
-
-    for (var i = 0; i < snapshots.length; i++) {
-      final doc = snapshots[i];
-      if (!doc.exists) continue;
-
-      final data = doc.data() as Map<String, dynamic>? ?? {};
-      final nickname = data['nickname'] ?? uidsToFetch[i];
-      final username = data['username'] ?? '';
-      final avatarHex = data['avatarHex'] ?? '';
-
-      _userNicknames[uidsToFetch[i]] = nickname;
-      _userUsernames[uidsToFetch[i]] = username;
-      if (avatarHex.isNotEmpty) {
-        _userPhotoUrls[uidsToFetch[i]] = avatarHex;
-      }
-
-      // === НАДЁЖНОЕ СОХРАНЕНИЕ В КЭШ ===
-      await _userCache.cacheUser(uidsToFetch[i], nickname, null, username);
-      if (avatarHex.isNotEmpty) {
-        await _userCache.cacheAvatarHex(uidsToFetch[i], avatarHex);
+    // Сначала проверяем локальный кэш
+    for (var uid in uidsToLoad) {
+      final cachedNick = _userCache.getNickname(uid);
+      final cachedUsername = _userCache.getUsername(uid);
+      if (cachedNick != null) _userNicknames[uid] = cachedNick;
+      if (cachedUsername != null) _userUsernames[uid] = cachedUsername;
+      // Пытаемся получить URL аватара
+      final cachedUrl = _userCache.getAvatarUrl(uid);
+      if (cachedUrl != null && cachedUrl.isNotEmpty) {
+        _userPhotoUrls[uid] = cachedUrl;
       }
     }
 
-    if (mounted) setState(() {});
-  } catch (e, stack) {
-    _logger.error('Error loading user info for chat list', error: e, stack: stack);
+    final uidsToFetch = uidsToLoad.where((uid) => !_userNicknames.containsKey(uid)).toList();
+    if (uidsToFetch.isEmpty) return;
+
+    try {
+      final futures = uidsToFetch.map((uid) => _firestoreService.getUser(uid)).toList();
+      final snapshots = await Future.wait(futures);
+
+      for (var i = 0; i < snapshots.length; i++) {
+        final doc = snapshots[i];
+        if (!doc.exists) continue;
+
+        final data = doc.data() as Map<String, dynamic>? ?? {};
+        final nickname = data['nickname'] ?? uidsToFetch[i];
+        final username = data['username'] ?? '';
+        final avatarUrl = data['avatarUrl'] ?? data['avatarHex'] ?? '';
+
+        _userNicknames[uidsToFetch[i]] = nickname;
+        _userUsernames[uidsToFetch[i]] = username;
+
+        if (avatarUrl.isNotEmpty) {
+          _userPhotoUrls[uidsToFetch[i]] = avatarUrl;
+          if (avatarUrl.startsWith('http')) {
+            await _userCache.cacheAvatarUrl(uidsToFetch[i], avatarUrl);
+          } else {
+            await _userCache.cacheAvatarHex(uidsToFetch[i], avatarUrl);
+          }
+        }
+
+        await _userCache.cacheUser(uidsToFetch[i], nickname, null, username);
+      }
+
+      if (mounted) setState(() {});
+    } catch (e, stack) {
+      _logger.error('Error loading user info for chat list', error: e, stack: stack);
+    }
   }
-} 
+
   List<Widget> _buildContextMenuActions(QueryDocumentSnapshot doc, String otherUserId, bool isSelfChat, bool isPinned) {
     final data = doc.data() as Map<String, dynamic>;
     final isMuted = data['isMuted'] ?? false;

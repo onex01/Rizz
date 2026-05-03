@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 
 import 'app.dart';
+import 'dart:async';
 import 'core/di/service_locator.dart';
 import 'core/logger/app_logger.dart';
 import 'core/notification/notification_service.dart';
@@ -82,6 +83,12 @@ void main() async {
     return true;
   };
 
+  runZonedGuarded(() {
+    runApp(const RizzApp());
+  }, (error, stack) {
+    logger.error('Uncaught zone error', error: error, stack: stack);
+  });
+
   final notificationService = GetIt.I<NotificationService>();
   await notificationService.initialize();
 
@@ -108,6 +115,4 @@ void main() async {
   }
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  
-  runApp(const RizzApp());
 }

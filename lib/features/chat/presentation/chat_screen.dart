@@ -1,16 +1,14 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:Rizz/shared/services/audio_player_service.dart';
-import 'package:Rizz/shared/services/file_converter_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import '../../../core/logger/app_logger.dart';
 import '../../../core/settings/settings_provider.dart';
@@ -23,11 +21,13 @@ import '../domain/message.dart';
 import '../widgets/message_list.dart';
 import '../widgets/chat_background.dart';
 import '../widgets/chat_input_bar.dart';
+import 'chat_attachment_menu.dart';
+import 'chat_media_picker.dart';
+import 'chat_upload_helper.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
   final String otherUserId;
-
   const ChatScreen({super.key, required this.chatId, required this.otherUserId});
 
   @override
@@ -37,15 +37,17 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateMixin {
   final _currentUser = FirebaseAuth.instance.currentUser!;
   final _messageController = TextEditingController();
-  final _mediaApiService = GetIt.I<MediaApiService>();
   final _scrollController = ScrollController();
   final GlobalKey _textFieldKey = GlobalKey();
-  File? _otherUserAvatarFile;
+  String? _otherUserAvatarUrl;
 
   final _audioPlayerService = GetIt.I<AudioPlayerService>();
   final _chatRepository = GetIt.I<ChatRepository>();
   final _firestoreService = GetIt.I<FirestoreService>();
   final _logger = GetIt.I<AppLogger>();
+  final _mediaApiService = GetIt.I<MediaApiService>();
+
+  late final ChatUploadHelper _uploadHelper;
 
   String? _otherUserNickname;
   bool? _isOnlineInChat;
@@ -68,19 +70,21 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
 
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
-
   @override
   void initState() {
     super.initState();
+    _uploadHelper = ChatUploadHelper(
+      chatId: widget.chatId,
+      currentUserId: _currentUser.uid,
+      chatRepository: _chatRepository,
+      logger: _logger,
+      onToast: _showToast,
+      onClearReply: _cancelReply,
+      onScrollToBottom: _scrollToBottom,
+    );
     _loadOtherUserInfo();
     _setupRealTimeChatStatus();
     _joinChat();
-
     _audioPlayerService.isPlayingStream.listen((playing) {
       if (mounted) setState(() => _isPlaying = playing);
     });
@@ -90,7 +94,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     _audioPlayerService.durationStream.listen((dur) {
       if (mounted) setState(() => _totalDuration = dur ?? Duration.zero);
     });
-
     _scrollController.addListener(() {
       if (_scrollController.offset > 300 && !_showScrollToBottom) {
         setState(() => _showScrollToBottom = true);
@@ -105,35 +108,16 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       setState(() => _otherUserNickname = 'Заметки');
       return;
     }
-
     try {
       final doc = await _firestoreService.getUser(widget.otherUserId);
       if (!doc.exists || !mounted) return;
-
       final data = doc.data() as Map<String, dynamic>;
       final pinnedSong = data['pinnedSong'] as Map<String, dynamic>? ?? {};
-      final avatarHex = data['avatarHex'] as String?;
-
-      File? avatarFile;
-      if (avatarHex != null && avatarHex.isNotEmpty) {
-        try {
-          avatarFile = await FileConverterService.hexToFile(
-            avatarHex,
-            'avatar_${widget.otherUserId}.jpg',
-          );
-          if (await avatarFile.length() == 0) {
-            await avatarFile.delete();
-            avatarFile = null;
-          }
-        } catch (e, stack) {
-          _logger.error('Failed to convert avatar hex to file', error: e, stack: stack);
-          avatarFile = null;
-        }
-      }
+      final avatarUrl = data['avatarUrl'] as String?;
 
       setState(() {
         _otherUserNickname = data['nickname'] ?? widget.otherUserId;
-        _otherUserAvatarFile = avatarFile;
+        _otherUserAvatarUrl = avatarUrl;
         _otherPinnedSongTitle = pinnedSong['title'];
         _otherPinnedSongArtist = pinnedSong['artist'];
         _otherPinnedSongDuration = pinnedSong['duration'] ?? '3:45';
@@ -142,7 +126,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
     } catch (e, stack) {
       _logger.error('Failed to load other user info', error: e, stack: stack);
     }
-
     WidgetsBinding.instance.addPostFrameCallback((_) => _markMessagesAsRead());
   }
 
@@ -196,7 +179,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
           .where('senderId', isEqualTo: widget.otherUserId)
           .where('isRead', isEqualTo: false)
           .get();
-
       if (unread.docs.isEmpty) return;
       final batch = FirebaseFirestore.instance.batch();
       for (var doc in unread.docs) {
@@ -211,10 +193,8 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   void _playSendAnimation(String text, Color bubbleColor) {
     final renderBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
-
     final offset = renderBox.localToGlobal(Offset.zero);
     final width = renderBox.size.width;
-
     late OverlayEntry entry;
     entry = OverlayEntry(
       builder: (context) {
@@ -263,16 +243,12 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
-
     await _firestoreService.updateChat(widget.chatId, {
       'typingUsers': FieldValue.arrayRemove([_currentUser.uid])
     });
-
     HapticFeedback.lightImpact();
-
     final settings = Provider.of<SettingsProvider>(context, listen: false);
     _playSendAnimation(text, settings.accentColor);
-
     final message = Message(
       id: '',
       senderId: _currentUser.uid,
@@ -281,269 +257,19 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       replyToMessageId: _replyingToId,
       repliedMessageText: _replyingToText,
     );
-
     _messageController.clear();
     setState(() {
       _replyingToId = null;
       _replyingToText = null;
     });
-
     await _chatRepository.sendMessage(widget.chatId, message);
     await _chatRepository.updateLastMessage(widget.chatId, text, 'text', senderId: _currentUser.uid);
     _scrollToBottom();
   }
 
-  // ==================== НОВЫЕ МЕТОДЫ ОТПРАВКИ МЕДИА ====================
-  Future<void> _uploadAndSendMessage(File file, String caption, String typeKey) async {
-    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
-    final fileSize = await file.length();
-    final fileName = file.path.split('/').last;
-
-    // Вставляем сообщение-заглушку с локальным путём и статусом uploading
-    await _chatRepository.insertLocalMessage(widget.chatId, {
-      'senderId': _currentUser.uid,
-      'text': caption.isNotEmpty ? caption : '',
-      'timestamp': Timestamp.now(),
-      'type': '${typeKey}_uploading',
-      'mediaData': {
-        'localPath': file.path,
-        'fileName': fileName,
-        'fileSize': fileSize,
-        'previewText': caption.isNotEmpty ? caption : (typeKey == 'image' ? '📷 Фото' : (typeKey == 'video' ? '🎥 Видео' : '📎 Файл')),
-      },
-      'replyToMessageId': _replyingToId,
-      'repliedMessageText': _replyingToText,
-    }, tempId);
-
-    setState(() {
-      _replyingToId = null;
-      _replyingToText = null;
-    });
-
-    try {
-      final mediaUrl = await _mediaApiService.uploadFile(
-        file,
-        maxWidth: typeKey == 'image' ? 1280 : null,
-        quality: typeKey == 'image' ? 85 : null,
-      );
-      if (mediaUrl == null) {
-        await _chatRepository.updateMessage(widget.chatId, tempId, {'isUploadFailed': true});
-        _showToast('Не удалось загрузить файл');
-        return;
-      }
-
-      await _chatRepository.updateMessage(widget.chatId, tempId, {
-        'type': typeKey,
-        'mediaData': {
-          'mediaUrl': mediaUrl,
-          'fileName': fileName,
-          'fileSize': fileSize,
-        },
-        'text': caption.isNotEmpty ? caption : '',
-      });
-      await _chatRepository.updateLastMessage(widget.chatId, caption.isNotEmpty ? caption : fileName, typeKey, senderId: _currentUser.uid);
-    } catch (e) {
-      _logger.error('Failed to upload media', error: e);
-      await _chatRepository.updateMessage(widget.chatId, tempId, {'isUploadFailed': true});
-      _showToast('Ошибка отправки файла');
-    }
-  }
-
-  Future<void> _pickMediaFromGallery() async {
-    final result = await FilePicker.pickFiles(type: FileType.media, allowMultiple: true);
-    if (result == null || result.files.isEmpty) return;
-
-    int total = result.files.length;
-    bool autoLoad = total <= 10; // автоматически загружаем если файлов <= 10
-    for (int i = 0; i < total; i++) {
-      final file = result.files[i];
-      if (file.path == null) continue;
-      final ext = file.name.split('.').last.toLowerCase();
-      final isVideo = ['mp4', 'mov', 'avi', 'mkv'].contains(ext);
-      final typeKey = isVideo ? 'video' : 'image';
-
-      // если много файлов, спрашиваем подпись для каждого, иначе только для первого?
-      // для простоты: спросим подпись только для первого, остальные без подписи
-      String caption = '';
-      if (i == 0) {
-        caption = await _askCaption(file.name);
-      }
-      if (!autoLoad && (typeKey == 'file' || typeKey == 'video')) {
-        // Для видео и файлов при большом количестве можно спросить подтверждение
-        // но здесь просто загружаем с уведомлением
-      }
-      await _uploadAndSendMessage(File(file.path!), caption, typeKey);
-    }
-  }
-
-  Future<void> _takePictureOrVideo() async {
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.camera_alt),
-            title: const Text('Снять фото'),
-            onTap: () => Navigator.pop(context, 'photo'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.videocam),
-            title: const Text('Снять видео'),
-            onTap: () => Navigator.pop(context, 'video'),
-          ),
-        ],
-      ),
-    );
-    if (result == null) return;
-
-    final picker = ImagePicker();
-    if (result == 'photo') {
-      final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 85, maxWidth: 800);
-      if (picked != null) {
-        final caption = await _askCaption('photo.jpg');
-        await _uploadAndSendMessage(File(picked.path), caption, 'image');
-      }
-    } else {
-      final picked = await picker.pickVideo(source: ImageSource.camera);
-      if (picked != null) {
-        final caption = await _askCaption('video.mp4');
-        await _uploadAndSendMessage(File(picked.path), caption, 'video');
-      }
-    }
-  }
-
-  Future<String> _askCaption(String fileName) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Подпись к "$fileName"'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Добавить подпись...'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, ''),
-            child: const Text('Пропустить'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Готово'),
-          ),
-        ],
-      ),
-    );
-    return result ?? '';
-  }
-
-  Future<void> _startVoiceRecording() async {
-    await VoiceService.startRecording();
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => VoiceRecorderDialog(
-        onSend: (File file) async {
-          await _uploadAndSendMessage(file, '', 'voice');
-        },
-      ),
-    );
-  }
-
-  // Обновлённое меню вложений
-  void _showAttachmentMenu() {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-          child: Container(
-            color: isLight ? Colors.white.withValues(alpha: 0.95) : Colors.black.withValues(alpha: 0.95),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isLight ? Colors.grey.shade300 : Colors.grey.shade600,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blue.withValues(alpha: 0.1),
-                      child: const Icon(Icons.photo_library, color: Colors.blue),
-                    ),
-                    title: const Text('Галерея (фото/видео)'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _pickMediaFromGallery();
-                    },
-                  ),
-                  ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.green.withValues(alpha: 0.1),
-                      child: const Icon(Icons.camera_alt, color: Colors.green),
-                    ),
-                    title: const Text('Камера'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _takePictureOrVideo();
-                    },
-                  ),
-                  ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                      child: const Icon(Icons.insert_drive_file, color: Colors.orange),
-                    ),
-                    title: const Text('Файл'),
-                    onTap: () async {
-                      Navigator.pop(context);
-                      final result = await FilePicker.pickFiles(type: FileType.any);
-                      if (result != null && result.files.single.path != null) {
-                        final file = File(result.files.single.path!);
-                        final caption = await _askCaption(result.files.single.name);
-                        await _uploadAndSendMessage(file, caption, 'file');
-                      }
-                    },
-                  ),
-                  ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.red.withValues(alpha: 0.1),
-                      child: const Icon(Icons.mic, color: Colors.red),
-                    ),
-                    title: const Text('Голосовое сообщение'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _startVoiceRecording();
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
+      _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
     }
   }
 
@@ -573,7 +299,6 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       ),
     );
     if (newText == null || newText.isEmpty || newText == oldText) return;
-
     await FirebaseFirestore.instance
         .collection('chats')
         .doc(widget.chatId)
@@ -632,19 +357,16 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       _showToast('Песня пока не доступна');
       return;
     }
-
     setState(() {
       _nowPlayingTitle = _otherPinnedSongTitle;
       _nowPlayingArtist = _otherPinnedSongArtist;
       _isPlayerVisible = true;
       _isPlaying = true;
     });
-
     try {
       final url = '${MediaApiService.baseUrl}/download/$_otherPinnedSongLargeFileId';
       final file = await _mediaApiService.downloadFile(url);
       if (file == null) throw Exception('Не удалось скачать файл');
-
       await _audioPlayerService.playVoice(
         file.path,
         title: _otherPinnedSongTitle ?? 'Песня',
@@ -655,6 +377,48 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
       _showToast('Ошибка загрузки трека');
       setState(() => _isPlayerVisible = false);
     }
+  }
+
+  void _showAttachmentMenu() {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => ChatAttachmentMenu(
+        isLight: isLight,
+        onPickMedia: () => ChatMediaPicker.pickMediaFromGallery(
+          context: context,
+          uploadHelper: _uploadHelper,
+        ),
+        onOpenCamera: () => ChatMediaPicker.takePictureOrVideo(
+          context: context,
+          uploadHelper: _uploadHelper,
+        ),
+        onPickFile: () => ChatMediaPicker.pickFile(
+          context: context,
+          uploadHelper: _uploadHelper,
+        ),
+        onPickAudio: () => ChatMediaPicker.pickAudio(
+          context: context,
+          uploadHelper: _uploadHelper,
+        ),
+        onVoiceRecord: _startVoiceRecording,
+      ),
+    );
+  }
+
+  Future<void> _startVoiceRecording() async {
+    await VoiceService.startRecording();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => VoiceRecorderDialog(
+        onSend: (File file) async {
+          await _uploadHelper.uploadAndSendMessage(file, '', 'voice');
+        },
+      ),
+    );
   }
 
   @override
@@ -709,15 +473,11 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
                 },
                 child: Row(
                   children: [
-                    if (_otherUserAvatarFile != null || widget.otherUserId == _currentUser.uid)
+                    if (_otherUserAvatarUrl != null)
                       CircleAvatar(
                         radius: 18,
-                        backgroundImage: _otherUserAvatarFile != null
-                            ? FileImage(_otherUserAvatarFile!)
-                            : null,
-                        child: _otherUserAvatarFile == null && widget.otherUserId != _currentUser.uid
-                            ? const Icon(Icons.person, size: 20)
-                            : null,
+                        backgroundImage: CachedNetworkImageProvider(_otherUserAvatarUrl!),
+                        onBackgroundImageError: (_, __) => const Icon(Icons.person, size: 20),
                       ),
                     const SizedBox(width: 12),
                     Column(
@@ -988,5 +748,11 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
         ],
       ),
     );
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 }

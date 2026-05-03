@@ -7,8 +7,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../shared/services/firestore_service.dart';
-import '../../chat/presentation/chat_screen.dart';
 import '../../../shared/services/user_cache_service.dart';
+import '../../chat/presentation/chat_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String userId;
@@ -26,7 +26,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   final _logger = GetIt.I<AppLogger>();
 
   String? _nickname;
-  String? _photoUrl;
+  String? _avatarUrl;
   String? _phoneNumber;
   String? _username;
   String? _email;
@@ -49,25 +49,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       if (!doc.exists || !mounted) return;
       final data = doc.data() as Map<String, dynamic>?;
       if (data == null) return;
-      if (doc.exists && mounted) {
-        final data = doc.data() as Map<String, dynamic>;
-        setState(() {
-          _nickname = data['nickname'] ?? 'Пользователь';
-          _username = data['username'];
-          _photoUrl = data['photoUrl'];
-          _phoneNumber = data['phoneNumber'];
-          _email = data['email'] ?? widget.userId;
-          _bio = data['bio'];
-          _isOnline = data['isOnline'] ?? false;
-          _lastSeen = data['lastSeen']?.toDate();
-          _isLoading = false;
-        });
-        final avatarHex = data['avatarHex'];
-        if (avatarHex != null) {
-          await _userCache.cacheAvatarHex(widget.userId, avatarHex);
-        }
-      } else {
-        setState(() => _isLoading = false);
+      setState(() {
+        _nickname = data['nickname'] ?? 'Пользователь';
+        _username = data['username'];
+        _avatarUrl = data['avatarUrl'] ?? data['avatarHex'];
+        _phoneNumber = data['phoneNumber'];
+        _email = data['email'] ?? widget.userId;
+        _bio = data['bio'];
+        _isOnline = data['isOnline'] ?? false;
+        _lastSeen = data['lastSeen']?.toDate();
+        _isLoading = false;
+      });
+
+      // Сохраняем URL в кэш, если он есть
+      if (_avatarUrl != null) {
+        await _userCache.cacheAvatarUrl(widget.userId, _avatarUrl!);
       }
     } catch (e) {
       _logger.error('Error loading user profile', error: e);
@@ -148,14 +144,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       children: [
+                        // Аватарка: пытаемся получить файл из кэша, иначе используем URL напрямую
                         FutureBuilder<File?>(
                           future: _userCache.getAvatarFile(widget.userId),
                           builder: (context, snapshot) {
                             if (snapshot.hasData && snapshot.data != null) {
                               return CircleAvatar(radius: 70, backgroundImage: FileImage(snapshot.data!));
                             }
-                            if (_photoUrl != null && _photoUrl!.isNotEmpty) {
-                              return CircleAvatar(radius: 70, backgroundImage: CachedNetworkImageProvider(_photoUrl!));
+                            if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
+                              return CircleAvatar(radius: 70, backgroundImage: CachedNetworkImageProvider(_avatarUrl!));
                             }
                             return CircleAvatar(radius: 70, child: Icon(Icons.person, size: 70, color: isLight ? Colors.grey : Colors.grey.shade400));
                           },

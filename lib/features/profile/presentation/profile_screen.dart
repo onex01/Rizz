@@ -1,15 +1,13 @@
-import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/logger/app_logger.dart';
 import '../../../shared/services/firestore_service.dart';
-import '../../../shared/services/file_converter_service.dart';
-import '../../../shared/services/chunked_file_service.dart';
+import '../../../shared/services/media_api_service.dart';
 import '../../../shared/services/audio_player_service.dart';
 import 'edit_profile_screen.dart';
 
@@ -23,12 +21,12 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _user = FirebaseAuth.instance.currentUser!;
   final _firestoreService = GetIt.I<FirestoreService>();
-  final _chunkedFileService = GetIt.I<ChunkedFileService>();
+  final _mediaApiService = GetIt.I<MediaApiService>();
   final _audioPlayerService = GetIt.I<AudioPlayerService>();
   final _logger = GetIt.I<AppLogger>();
 
   String? _nickname;
-  String? _avatarHex;
+  String? _avatarUrl;
   String? _phoneNumber;
   String? _bio;
   bool _isLoading = true;
@@ -36,7 +34,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Данные закреплённой песни
   String? _pinnedSongTitle;
   String? _pinnedSongArtist;
-  String? _pinnedSongLargeFileId;   // ← Добавлено
+  String? _pinnedSongUrl;
 
   bool _isPlayingPinnedSong = false;
 
@@ -55,13 +53,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         setState(() {
           _nickname = data['nickname'] ?? _user.email?.split('@')[0];
-          _avatarHex = data['avatarHex'];
+          _avatarUrl = data['avatarUrl'] ?? data['avatarHex'];
           _phoneNumber = data['phoneNumber'];
           _bio = data['bio'] ?? 'Привет! Я использую Rizz';
 
           _pinnedSongTitle = pinnedSong['title'];
           _pinnedSongArtist = pinnedSong['artist'];
-          _pinnedSongLargeFileId = pinnedSong['largeFileId'];
+          _pinnedSongUrl = pinnedSong['url']; // новый формат
 
           _isLoading = false;
         });
@@ -74,66 +72,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ==================== ВОСПРОИЗВЕДЕНИЕ ЗАКРЕПЛЁННОЙ ПЕСНИ =================== 
-Future<void> _playPinnedSong() async {
-  if (_pinnedSongLargeFileId == null) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Музыка ещё не загружена')),
-    );
-    return;
-  }
-
-  setState(() => _isPlayingPinnedSong = true);
-
-  try {
-    final bytes = await _chunkedFileService.downloadLargeFile(_pinnedSongLargeFileId!);
-    if (bytes.isEmpty) throw Exception("Файл пуст");
-
-    final tempDir = await getTemporaryDirectory();
-
-    // Берём оригинальное имя файла из Firestore (если есть) или делаем надёжное имя
-    final safeFileName = '${DateTime.now().millisecondsSinceEpoch}_pinned_song.mp3';
-    final tempPath = '${tempDir.path}/$safeFileName';
-    final tempFile = File(tempPath);
-
-    await tempFile.writeAsBytes(bytes, flush: true); // flush — критично!
-
-    if (await tempFile.exists()) {
-      _logger.info('▶️ Playing pinned song: ${tempFile.path}');
-
-      await _audioPlayerService.playVoice(
-        tempFile.path,
-        title: _pinnedSongTitle ?? 'Закреплённая песня',
-        artist: _pinnedSongArtist ?? 'Rizz App',
-      );
-
+  // ==================== ВОСПРОИЗВЕДЕНИЕ ЗАКРЕПЛЁННОЙ ПЕСНИ ====================
+  Future<void> _playPinnedSong() async {
+    if (_pinnedSongUrl == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('▶️ ${_pinnedSongTitle ?? "Песня"}')),
+        const SnackBar(content: Text('Музыка ещё не загружена')),
       );
+      return;
     }
-  } catch (e, stack) {
-    _logger.error('Failed to play pinned song', error: e, stack: stack);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Ошибка воспроизведения: ${e.toString()}')),
-    );
-  } finally {
-    if (mounted) setState(() => _isPlayingPinnedSong = false);
+
+    setState(() => _isPlayingPinnedSong = true);
+    try {
+      final file = await _mediaApiService.downloadFile(_pinnedSongUrl!);
+      if (file != null) {
+        await _audioPlayerService.playVoice(
+          file.path,
+          title: _pinnedSongTitle ?? 'Закреплённая песня',
+          artist: _pinnedSongArtist ?? '',
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('▶️ ${_pinnedSongTitle ?? "Песня"}')),
+        );
+      }
+    } catch (e, stack) {
+      _logger.error('Failed to play pinned song', error: e, stack: stack);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ошибка воспроизведения')),
+      );
+    } finally {
+      if (mounted) setState(() => _isPlayingPinnedSong = false);
+    }
   }
-}
 
   Widget _buildAvatar() {
-    if (_avatarHex != null && _avatarHex!.isNotEmpty) {
-      return FutureBuilder<File?>(
-        future: FileConverterService.hexToFile(_avatarHex!, 'avatar_${_user.uid}.jpg'),
-        builder: (context, snapshot) {
-          if (snapshot.hasData && snapshot.data != null) {
-            return CircleAvatar(
-              radius: 60,
-              backgroundImage: FileImage(snapshot.data!),
-            );
-          }
-          return const CircleAvatar(radius: 60, child: Icon(Icons.person, size: 60));
-        },
+    if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
+      return CircleAvatar(
+        radius: 60,
+        backgroundImage: CachedNetworkImageProvider(_avatarUrl!),
+        onBackgroundImageError: (_, __) => const Icon(Icons.person, size: 60),
       );
     }
     return const CircleAvatar(radius: 60, child: Icon(Icons.person, size: 60));

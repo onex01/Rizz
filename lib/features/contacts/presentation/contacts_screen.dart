@@ -159,10 +159,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           children: [
                             CircleAvatar(
                               radius: 28,
-                              backgroundImage: friend['photoUrl'] != null
+                              backgroundImage: (friend['photoUrl'] != null &&
+                                      friend['photoUrl'].toString().startsWith('http'))
                                   ? CachedNetworkImageProvider(friend['photoUrl'])
                                   : null,
-                              child: friend['photoUrl'] == null
+                              child: (friend['photoUrl'] == null ||
+                                      !friend['photoUrl'].toString().startsWith('http'))
                                   ? Icon(Icons.person, size: 32, color: isLight ? Colors.grey : Colors.grey.shade400)
                                   : null,
                             ),
