@@ -1,11 +1,10 @@
 import 'package:email_validator/email_validator.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // для FirebaseAuthException
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:get_it/get_it.dart';
-
 import '../../../core/logger/app_logger.dart';
 import '../../../shared/services/auth_service.dart';
+import '../../../core/notification/universal_toast.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -17,7 +16,6 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateMixin {
   bool isLogin = true;
   bool _isLoading = false;
-
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -56,29 +54,21 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-
     try {
       if (isLogin) {
         await _authService.signInWithEmail(
           _emailController.text.trim(),
           _passwordController.text.trim(),
         );
-        if (mounted) {
-          Fluttertoast.showToast(msg: "Вход выполнен успешно!", gravity: ToastGravity.BOTTOM);
-        }
+        if (mounted) showToast(context, "Вход выполнен успешно!");
       } else {
         await _authService.signUpWithEmail(
           _emailController.text.trim(),
           _passwordController.text.trim(),
         );
         if (mounted) {
-          Fluttertoast.showToast(
-            msg: "Аккаунт создан! Подтвердите email",
-            gravity: ToastGravity.BOTTOM,
-            toastLength: Toast.LENGTH_LONG,
-          );
+          showToast(context, "Аккаунт создан! Подтвердите email");
           await _authService.signOut();
-
           setState(() {
             isLogin = true;
             _emailController.clear();
@@ -97,23 +87,10 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         case 'user-disabled': msg = "Аккаунт отключен"; break;
         case 'too-many-requests': msg = "Слишком много попыток. Попробуйте позже"; break;
       }
-      if (mounted) {
-        Fluttertoast.showToast(
-          msg: msg,
-          backgroundColor: Colors.red,
-          gravity: ToastGravity.BOTTOM,
-          toastLength: Toast.LENGTH_LONG,
-        );
-      }
+      if (mounted) showToast(context, msg, isError: true);
     } catch (e, stack) {
       _logger.error('Auth error', error: e, stack: stack);
-      if (mounted) {
-        Fluttertoast.showToast(
-          msg: "Произошла ошибка: ${e.toString().split('\n').first}",
-          backgroundColor: Colors.red,
-          gravity: ToastGravity.BOTTOM,
-        );
-      }
+      if (mounted) showToast(context, "Ошибка: ${e.toString().split('\n').first}", isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -124,28 +101,29 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     try {
       final user = await _authService.signInWithGoogle();
       if (user != null && mounted) {
-        Fluttertoast.showToast(
-          msg: "Вход через Google выполнен успешно!",
-          gravity: ToastGravity.BOTTOM,
-        );
+        showToast(context, "Вход через Google выполнен успешно!");
       } else if (mounted) {
-        Fluttertoast.showToast(
-          msg: "Не удалось войти через Google",
-          backgroundColor: Colors.red,
-          gravity: ToastGravity.BOTTOM,
-        );
+        showToast(context, "Не удалось войти через Google", isError: true);
       }
     } catch (e, stack) {
       _logger.error('Google sign in error', error: e, stack: stack);
-      if (mounted) {
-        Fluttertoast.showToast(
-          msg: "Ошибка входа через Google",
-          backgroundColor: Colors.red,
-          gravity: ToastGravity.BOTTOM,
-        );
-      }
+      if (mounted) showToast(context, "Ошибка входа через Google", isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !EmailValidator.validate(email)) {
+      showToast(context, "Введите корректный email", isError: true);
+      return;
+    }
+    try {
+      await _authService.sendPasswordResetEmail(email);
+      if (mounted) showToast(context, "Письмо для сброса пароля отправлено на $email");
+    } catch (e) {
+      if (mounted) showToast(context, "Ошибка отправки письма", isError: true);
     }
   }
 
@@ -153,7 +131,6 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isLight = theme.brightness == Brightness.light;
-
     return Scaffold(
       backgroundColor: isLight ? Colors.grey.shade50 : const Color(0xFF0F0F0F),
       body: Center(
@@ -168,155 +145,83 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Анимированная иконка
                     AnimatedBuilder(
                       animation: _animationController,
-                      builder: (context, child) {
-                        return Transform.scale(
-                          scale: _scaleAnimation.value,
-                          child: Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.chat_bubble_outline,
-                              size: 80,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        );
-                      },
+                      builder: (context, child) => Transform.scale(
+                        scale: _scaleAnimation.value,
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(color: Colors.blue.withValues(alpha:0.1), shape: BoxShape.circle),
+                          child: const Icon(Icons.chat_bubble_outline, size: 80, color: Colors.blue),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 32),
                     Text(
                       isLogin ? 'Добро пожаловать!' : 'Создать аккаунт',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: isLight ? Colors.black : Colors.white,
-                      ),
+                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: isLight ? Colors.black : Colors.white),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       isLogin ? 'Войдите чтобы продолжить' : 'Зарегистрируйтесь чтобы начать общение',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isLight ? Colors.grey[600] : Colors.grey[400],
-                      ),
+                      style: TextStyle(fontSize: 14, color: isLight ? Colors.grey[600] : Colors.grey[400]),
                     ),
                     const SizedBox(height: 40),
-                    // Поле Email
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
                       decoration: InputDecoration(
                         labelText: 'Email',
-                        labelStyle: TextStyle(
-                          color: isLight ? Colors.grey[700] : Colors.grey[400],
-                        ),
-                        prefixIcon: Icon(
-                          Icons.email_outlined,
-                          color: isLight ? Colors.grey[700] : Colors.grey[400],
-                        ),
+                        prefixIcon: Icon(Icons.email_outlined, color: isLight ? Colors.grey[700] : Colors.grey[400]),
                         filled: true,
                         fillColor: isLight ? Colors.white : Colors.grey[900],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: isLight ? Colors.grey[300]! : Colors.grey[700]!,
-                            width: 1.5,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Colors.blue, width: 2),
-                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isLight ? Colors.grey[300]! : Colors.grey[700]!, width: 1.5)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blue, width: 2)),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return 'Введите email';
-                        if (!EmailValidator.validate(value)) return 'Неверный формат email';
-                        return null;
-                      },
+                      validator: (value) => value == null || value.isEmpty ? 'Введите email' : (!EmailValidator.validate(value) ? 'Неверный формат email' : null),
                     ),
                     const SizedBox(height: 16),
-                    // Поле Пароль
                     TextFormField(
                       controller: _passwordController,
                       obscureText: true,
-                      style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color),
                       decoration: InputDecoration(
                         labelText: 'Пароль',
-                        labelStyle: TextStyle(
-                          color: isLight ? Colors.grey[700] : Colors.grey[400],
-                        ),
-                        prefixIcon: Icon(
-                          Icons.lock_outline,
-                          color: isLight ? Colors.grey[700] : Colors.grey[400],
-                        ),
+                        prefixIcon: Icon(Icons.lock_outline, color: isLight ? Colors.grey[700] : Colors.grey[400]),
                         filled: true,
                         fillColor: isLight ? Colors.white : Colors.grey[900],
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: isLight ? Colors.grey[300]! : Colors.grey[700]!,
-                            width: 1.5,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Colors.blue, width: 2),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isLight ? Colors.grey[300]! : Colors.grey[700]!, width: 1.5)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blue, width: 2)),
+                      ),
+                      validator: (value) => value == null || value.isEmpty ? 'Введите пароль' : (value.length < 6 ? 'Пароль минимум 6 символов' : null),
+                    ),
+                    if (isLogin)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _forgotPassword,
+                          child: const Text('Забыли пароль?', style: TextStyle(color: Colors.grey)),
                         ),
                       ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return 'Введите пароль';
-                        if (value.length < 6) return 'Пароль должен содержать минимум 6 символов';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 32),
-                    // Кнопка входа / регистрации
+                    const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
                       height: 52,
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 2,
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : Text(isLogin ? 'Войти' : 'Зарегистрироваться', style: const TextStyle(fontSize: 16)),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        child: _isLoading ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(isLogin ? 'Войти' : 'Зарегистрироваться', style: const TextStyle(fontSize: 16)),
                       ),
                     ),
                     const SizedBox(height: 16),
                     TextButton(
-                      onPressed: () {
-                        setState(() {
-                          isLogin = !isLogin;
-                          _formKey.currentState?.reset();
-                        });
-                      },
-                      child: Text(
-                        isLogin ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти',
-                        style: TextStyle(fontSize: 14, color: Colors.blue[300]),
-                      ),
+                      onPressed: () { setState(() { isLogin = !isLogin; _formKey.currentState?.reset(); }); },
+                      child: Text(isLogin ? 'Нет аккаунта? Зарегистрироваться' : 'Уже есть аккаунт? Войти', style: TextStyle(color: Colors.blue[300])),
                     ),
                     const SizedBox(height: 20),
                     const Divider(),
                     const SizedBox(height: 20),
-                    // Google
                     SizedBox(
                       width: double.infinity,
                       height: 52,
@@ -324,11 +229,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                         onPressed: _isLoading ? null : _signInWithGoogle,
                         icon: const Icon(Icons.g_mobiledata, size: 28),
                         label: const Text('Продолжить с Google'),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: isLight ? Colors.grey[300]! : Colors.grey[700]!),
-                          foregroundColor: isLight ? Colors.black : Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                        style: OutlinedButton.styleFrom(side: BorderSide(color: isLight ? Colors.grey[300]! : Colors.grey[700]!), foregroundColor: isLight ? Colors.black : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                       ),
                     ),
                   ],

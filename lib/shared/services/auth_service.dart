@@ -10,6 +10,7 @@ abstract class AuthService {
   Future<User?> signInWithGoogle();
   Future<void> signOut();
   Future<void> sendEmailVerification();
+  Future<void> sendPasswordResetEmail(String email);
   Future<void> updateUserProfile(String uid, Map<String, dynamic> data);
 }
 
@@ -26,10 +27,7 @@ class AuthServiceImpl implements AuthService {
   @override
   Future<User?> signInWithEmail(String email, String password) async {
     try {
-      final cred = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
       return cred.user;
     } on FirebaseAuthException catch (e) {
       _logger.warning('Sign in failed: ${e.code}');
@@ -40,10 +38,7 @@ class AuthServiceImpl implements AuthService {
   @override
   Future<User?> signUpWithEmail(String email, String password) async {
     try {
-      final cred = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final cred = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       final user = cred.user!;
       await _firestore.collection('users').doc(user.uid).set({
         'uid': user.uid,
@@ -64,21 +59,14 @@ class AuthServiceImpl implements AuthService {
   @override
   Future<User?> signInWithGoogle() async {
     try {
-      // Инициализируем синглтон с clientId (обязательно для веба)
       await GoogleSignIn.instance.initialize(
         clientId: '931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com',
       );
-
       final account = await GoogleSignIn.instance.authenticate();
-
       final auth = await account.authentication;
-      final credential = GoogleAuthProvider.credential(
-        idToken: auth.idToken,
-      );
-
+      final credential = GoogleAuthProvider.credential(idToken: auth.idToken);
       final userCred = await _auth.signInWithCredential(credential);
       final user = userCred.user!;
-
       await _firestore.collection('users').doc(user.uid).set({
         'uid': user.uid,
         'email': user.email,
@@ -87,7 +75,6 @@ class AuthServiceImpl implements AuthService {
         'bio': '',
         'lastSeen': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-
       return user;
     } catch (e, stack) {
       await _logger.error('Google sign in failed', error: e, stack: stack);
@@ -104,6 +91,11 @@ class AuthServiceImpl implements AuthService {
     if (user != null && !user.emailVerified) {
       await user.sendEmailVerification();
     }
+  }
+
+  @override
+  Future<void> sendPasswordResetEmail(String email) async {
+    await _auth.sendPasswordResetEmail(email: email);
   }
 
   @override

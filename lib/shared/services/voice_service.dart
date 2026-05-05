@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:record/record.dart'; 
 import 'package:just_audio/just_audio.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/notification/universal_toast.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -17,7 +18,7 @@ class VoiceService {
       await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
       _recordingPath = path;
     } else {
-      Fluttertoast.showToast(msg: 'Нет разрешения на запись');
+      Fluttertoast.showToast(msg:  'Нет разрешения на запись');
     }
   }
 
@@ -135,7 +136,7 @@ class _VoiceRecorderDialogState extends State<VoiceRecorderDialog> {
                     widget.onSend(file);
                     if (mounted) Navigator.pop(context);
                   } else {
-                    Fluttertoast.showToast(msg: 'Ошибка записи');
+                    showToast(context, 'Ошибка записи');
                     if (mounted) Navigator.pop(context);
                   }
                 },

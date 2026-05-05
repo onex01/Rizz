@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -50,7 +50,7 @@ class SettingsProvider extends ChangeNotifier {
     final bgColorValue = prefs.getInt('chatBackgroundColor');
     if (bgColorValue != null) _chatBackgroundColor = Color(bgColorValue);
     _showAvatars = prefs.getBool('showAvatars') ?? true;
-    _sendByEnter = prefs.getBool('sendByEnter') ?? (!Platform.isAndroid && !Platform.isIOS);
+    _sendByEnter = prefs.getBool('sendByEnter') ?? (kIsWeb || !(defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS));
     final bgTypeIndex = prefs.getInt('chatBgType') ?? 3; // procedural по умолчанию
     _chatBgType = ChatBackgroundType.values[bgTypeIndex];
     final solidColor = prefs.getInt('chatSolidColor');

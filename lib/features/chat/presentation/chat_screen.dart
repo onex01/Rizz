@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:Rizz/shared/services/audio_player_service.dart';
+import 'package:rizz/shared/services/audio_player_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';

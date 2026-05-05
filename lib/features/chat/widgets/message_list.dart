@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/notification/universal_toast.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:get_it/get_it.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -141,14 +141,14 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
         if (downloadsDir != null) {
           final savedFile = File('${downloadsDir.path}/$fileName');
           await file.copy(savedFile.path);
-          Fluttertoast.showToast(msg: 'Файл сохранён в Загрузки');
+          showToast(context, 'Файл сохранён в Загрузки');
         }
         return;
       }
 
     } catch (e, stack) {
       _logger.error('Download file error', error: e, stack: stack);
-      Fluttertoast.showToast(msg: 'Ошибка сохранения файла');
+      showToast(context, 'Ошибка сохранения файла');
     }
   }
 

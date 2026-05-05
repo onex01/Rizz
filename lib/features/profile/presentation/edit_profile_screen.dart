@@ -1,13 +1,13 @@
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:get_it/get_it.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../shared/services/firestore_service.dart';
+import '../../../core/notification/universal_toast.dart';
 import '../../../shared/services/media_api_service.dart';
 import '../../../shared/services/user_cache_service.dart';
 import '../../../core/logger/app_logger.dart';
@@ -93,11 +93,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _saveProfile() async {
     final nickname = _nicknameController.text.trim();
     if (nickname.isEmpty) {
-      Fluttertoast.showToast(msg: "Никнейм не может быть пустым");
+      showToast(context, "Никнейм не может быть пустым");
       return;
     }
     if (_usernameError != null) {
-      Fluttertoast.showToast(msg: "Исправьте ошибку в имени пользователя");
+      showToast(context, "Исправьте ошибку в имени пользователя");
       return;
     }
 
@@ -113,10 +113,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       await _firestoreService.updateUser(_user.uid, updates);
-      Fluttertoast.showToast(msg: "Профиль обновлён");
+      showToast(context, "Профиль обновлён");
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      Fluttertoast.showToast(msg: "Ошибка сохранения профиля");
+      showToast(context, "Ошибка сохранения профиля");
     } finally {
       setState(() => _saving = false);
     }
@@ -140,12 +140,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         await _firestoreService.updateUser(_user.uid, {'avatarUrl': url});
         setState(() => _avatarUrl = url);
         await _userCache.cacheAvatarUrl(_user.uid, url);
-        Fluttertoast.showToast(msg: "Фото обновлено");
+        showToast(context, "Фото обновлено");
       } else {
-        Fluttertoast.showToast(msg: "Ошибка загрузки фото");
+        showToast(context, "Ошибка загрузки фото");
       }
     } catch (e) {
-      Fluttertoast.showToast(msg: "Ошибка загрузки фото");
+      showToast(context, "Ошибка загрузки фото");
     } finally {
       setState(() => _saving = false);
     }
@@ -165,11 +165,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final fileName = result.files.first.name;
       final fileSize = await file.length();
       if (fileSize == 0) {
-        Fluttertoast.showToast(msg: "Файл пустой");
+        showToast(context, "Файл пустой");
         return;
       }
       if (fileSize > 50 * 1024 * 1024) {
-        Fluttertoast.showToast(msg: "Файл слишком большой (макс. 50 МБ)");
+        showToast(context, "Файл слишком большой (макс. 50 МБ)");
         return;
       }
 
@@ -189,13 +189,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         };
         await _firestoreService.updateUser(_user.uid, {'pinnedSong': pinnedSong});
         setState(() => _pinnedSongUrl = url);
-        Fluttertoast.showToast(msg: "✅ Музыка успешно закреплена");
+        showToast(context, "✅ Музыка успешно закреплена");
       } else {
-        Fluttertoast.showToast(msg: "Ошибка загрузки трека");
+        showToast(context, "Ошибка загрузки трека");
       }
     } catch (e, stack) {
       _logger.error('Failed to upload pinned song', error: e, stack: stack);
-      Fluttertoast.showToast(msg: "Ошибка загрузки трека");
+      showToast(context, "Ошибка загрузки трека");
     } finally {
       if (mounted) setState(() => _saving = false);
     }

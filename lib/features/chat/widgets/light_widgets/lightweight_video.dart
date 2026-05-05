@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
-import 'package:Rizz/shared/services/cache_service.dart';
+import 'package:rizz/shared/services/cache_service.dart';
 import '../../../../shared/services/media_api_service.dart';
 import '../network_video_player.dart';
 

@@ -1,42 +1,56 @@
-import 'package:Rizz/shared/services/audio_player_service.dart';
+import 'dart:ui';
+import 'dart:convert';
+import 'package:rizz/shared/services/audio_player_service.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:app_links/app_links.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 
 import 'app.dart';
-import 'dart:async';
 import 'core/di/service_locator.dart';
 import 'core/logger/app_logger.dart';
 import 'core/notification/notification_service.dart';
 import 'shared/services/message_listener_service.dart';
 import 'shared/services/firestore_service.dart';
 import 'firebase_options.dart';
-import 'dart:convert';
+
+bool isMobilePlatform() {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.android ||
+         defaultTargetPlatform == TargetPlatform.iOS;
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   PaintingBinding.instance.imageCache.maximumSize = 200;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 50 << 20; // 50 MB
-  
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
   await setupServiceLocator();
-  await GoogleSignIn.instance.initialize(
-    clientId: '931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com',
-  );
+
+  // Google Sign‑In только на мобильных и веб
+  if (isMobilePlatform()) {
+    try {
+      await GoogleSignIn.instance.initialize(
+        clientId: '931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com',
+      );
+    } catch (_) {
+      // Просто не будет работать на этой платформе
+    }
+  }
 
   final logger = GetIt.I<AppLogger>();
   await logger.init();
 
-  // Загружаем username текущего пользователя (если уже авторизован)
   final currentUser = FirebaseAuth.instance.currentUser;
   if (currentUser != null) {
     try {
@@ -49,12 +63,9 @@ void main() async {
           logger.setUsername(username);
         }
       }
-    } catch (_) {
-      // не критично – логи будут без username
-    }
+    } catch (_) {}
   }
 
-  // === ИНИЦИАЛИЗАЦИЯ АУДИО ===
   try {
     final audioService = GetIt.I<AudioPlayerService>();
     await audioService.init();
@@ -63,7 +74,6 @@ void main() async {
     logger.error('❌ Failed to init AudioPlayerService', error: e, stack: stack);
   }
 
-  // Deep links
   final appLinks = AppLinks();
   appLinks.uriLinkStream.listen((uri) {
     if (uri.scheme == 'rizz' && uri.host == 'profile') {
@@ -71,7 +81,6 @@ void main() async {
     }
   });
 
-  // Глобальные обработчики ошибок
   FlutterError.onError = (details) {
     logger.error('Flutter error', error: details.exception, stack: details.stack);
     if (kDebugMode) FlutterError.dumpErrorToConsole(details);
@@ -83,11 +92,7 @@ void main() async {
     return true;
   };
 
-  runZonedGuarded(() {
-    runApp(const RizzApp());
-  }, (error, stack) {
-    logger.error('Uncaught zone error', error: error, stack: stack);
-  });
+  runApp(const RizzApp()); // без runZonedGuarded
 
   final notificationService = GetIt.I<NotificationService>();
   await notificationService.initialize();
@@ -100,18 +105,11 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    // Минимальная инициализация DI, чтобы получить NotificationService
     await setupServiceLocator();
-    final notificationService = GetIt.I<NotificationService>();
-    
-    // Извлекаем данные из уведомления и показываем локальное
+    final ns = GetIt.I<NotificationService>();
     final title = message.notification?.title ?? 'Новое сообщение';
     final body = message.notification?.body ?? '';
-    await notificationService.showLocalNotification(
-      title: title,
-      body: body,
-      payload: jsonEncode(message.data),
-    );
+    await ns.showLocalNotification(title: title, body: body, payload: jsonEncode(message.data));
   }
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
