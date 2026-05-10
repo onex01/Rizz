@@ -1,11 +1,4 @@
-// ==================== ИСПРАВЛЕННЫЙ chat_input_bar.dart ====================
-// Добавлены RepaintBoundary вокруг всех BackdropFilter для «запекания» слоя
-// на отдельном GPU-слое (композитор Flutter). Это сильно снижает лаги при
-// анимации открытия клавиатуры, не меняя сам блюр и не убирая его.
-
 import 'dart:ui';
-
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class ChatInputBar extends StatefulWidget {
@@ -47,7 +40,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Блок ответа (Reply) — запечённый слой
+        // Блок "Ответ" (при наличии)
         if (widget.replyingToText != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -85,7 +78,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(CupertinoIcons.clear_circled_solid, color: Colors.grey, size: 22),
+                          icon: const Icon(Icons.cancel, color: Colors.grey, size: 22),
                           onPressed: widget.onCancelReply,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
@@ -98,7 +91,7 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           ),
 
-        // Основное поле (Liquid Glass) — запечённый слой
+        // Основное поле ввода (стекло)
         RepaintBoundary(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(9999),
@@ -119,52 +112,37 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
+                    // Кнопка вложения
+                    IconButton(
+                      icon: Icon(Icons.attach_file, color: isLight ? Colors.grey.shade600 : Colors.grey.shade400),
                       onPressed: widget.onAttachmentPressed,
-                      child: Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isLight ? Colors.black.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.1),
-                        ),
-                        child: Icon(
-                          CupertinoIcons.paperclip,
-                          color: isLight ? CupertinoColors.systemGrey : Colors.grey,
-                          size: 24,
-                        ),
-                      ),
+                      splashRadius: 20,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
                     ),
                     const SizedBox(width: 6),
+                    // Текстовое поле
                     Expanded(
                       key: widget.textFieldKey,
-                      child: CupertinoTextField(
+                      child: TextField(
                         controller: widget.controller,
-                        placeholder: 'Напишите, скучно...',
-                        placeholderStyle: TextStyle(
-                          color: isLight ? CupertinoColors.systemGrey : Colors.grey.shade400,
-                          fontSize: 17,
+                        decoration: InputDecoration(
+                          hintText: 'Напишите, скучно...',
+                          hintStyle: TextStyle(color: isLight ? Colors.grey.shade500 : Colors.grey.shade400, fontSize: 17),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                         ),
-                        style: TextStyle(
-                          color: isLight ? CupertinoColors.black : Colors.white,
-                          fontSize: 17,
-                        ),
-                        decoration: const BoxDecoration(),
+                        style: TextStyle(color: isLight ? Colors.black : Colors.white, fontSize: 17),
                         maxLines: 5,
                         minLines: 1,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                         keyboardAppearance: isLight ? Brightness.light : Brightness.dark,
                         textCapitalization: TextCapitalization.sentences,
-                        onChanged: widget.onChanged != null
-                            ? (String _) => widget.onChanged!()
-                            : null,
-                        onSubmitted: widget.onSubmitted != null
-                            ? (String _) => widget.onSubmitted!()
-                            : null,
+                        onChanged: widget.onChanged != null ? (_) => widget.onChanged!() : null,
+                        onSubmitted: widget.onSubmitted != null ? (_) => widget.onSubmitted!() : null,
                       ),
                     ),
                     const SizedBox(width: 6),
+                    // Кнопка отправки / микрофон
                     ValueListenableBuilder<TextEditingValue>(
                       valueListenable: widget.controller,
                       builder: (context, value, child) {
@@ -173,31 +151,22 @@ class _ChatInputBarState extends State<ChatInputBar> {
                           duration: const Duration(milliseconds: 200),
                           transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
                           child: hasText
-                              ? CupertinoButton(
+                              ? IconButton(
                                   key: const ValueKey('send'),
-                                  padding: EdgeInsets.zero,
+                                  icon: Icon(Icons.send_rounded, color: widget.accentColor, size: 24),
                                   onPressed: widget.onSend,
-                                  child: Container(
-                                    width: 38,
-                                    height: 38,
-                                    decoration: BoxDecoration(shape: BoxShape.circle, color: widget.accentColor),
-                                    child: const Icon(CupertinoIcons.arrow_up_circle_fill, color: Colors.white, size: 24),
-                                  ),
-                                )
-                              : CupertinoButton(
-                                  key: const ValueKey('mic'),
+                                  splashRadius: 20,
                                   padding: EdgeInsets.zero,
-                                  onPressed: () {},
+                                  constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
+                                )
+                              : IconButton(
+                                  key: const ValueKey('mic'),
+                                  icon: Icon(Icons.mic, color: isLight ? Colors.grey.shade600 : Colors.grey.shade400, size: 24),
+                                  onPressed: null,
                                   onLongPress: widget.onVoiceRecording,
-                                  child: Container(
-                                    width: 38,
-                                    height: 38,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: isLight ? Colors.black.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.1),
-                                    ),
-                                    child: Icon(CupertinoIcons.mic, color: isLight ? CupertinoColors.systemGrey : Colors.grey, size: 24),
-                                  ),
+                                  splashRadius: 20,
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(minWidth: 38, minHeight: 38),
                                 ),
                         );
                       },

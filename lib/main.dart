@@ -19,6 +19,33 @@ import 'shared/services/message_listener_service.dart';
 import 'shared/services/firestore_service.dart';
 import 'firebase_options.dart';
 
+// ======================================================
+// ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ ФОНОВЫХ УВЕДОМЛЕНИЙ
+// ======================================================
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // 1. Инициализируем Firebase (обязательно в изоляте)
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  // 2. Инициализируем DI (чтобы получить сервисы)
+  await setupServiceLocator();
+  
+  final logger = GetIt.I<AppLogger>();
+  logger.info('📩 Фоновое уведомление: ${message.messageId}');
+  
+  final notificationService = GetIt.I<NotificationService>();
+  final title = message.notification?.title ?? 'Новое сообщение';
+  final body = message.notification?.body ?? '';
+  final payload = jsonEncode(message.data);
+  
+  await notificationService.showLocalNotification(
+    title: title,
+    body: body,
+    payload: payload,
+  );
+}
+
 bool isMobilePlatform() {
   if (kIsWeb) return false;
   return defaultTargetPlatform == TargetPlatform.android ||
@@ -28,14 +55,20 @@ bool isMobilePlatform() {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Кэш изображений
   PaintingBinding.instance.imageCache.maximumSize = 200;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 50 << 20; // 50 MB
 
+  // Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
+  // DI
   await setupServiceLocator();
+
+  // ✅ Регистрируем обработчик фоновых уведомлений ДО runApp
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
   // Google Sign‑In только на мобильных и веб
   if (isMobilePlatform()) {
@@ -43,9 +76,7 @@ void main() async {
       await GoogleSignIn.instance.initialize(
         clientId: '931475441186-h5gh1fo9hn6v3e2cddj2dq689m624qpd.apps.googleusercontent.com',
       );
-    } catch (_) {
-      // Просто не будет работать на этой платформе
-    }
+    } catch (_) {}
   }
 
   final logger = GetIt.I<AppLogger>();
@@ -69,15 +100,15 @@ void main() async {
   try {
     final audioService = GetIt.I<AudioPlayerService>();
     await audioService.init();
-    logger.info('✅ AudioPlayerService initialized successfully');
+    logger.info('✅ AudioPlayerService initialized');
   } catch (e, stack) {
-    logger.error('❌ Failed to init AudioPlayerService', error: e, stack: stack);
+    logger.error('❌ AudioPlayerService init failed', error: e, stack: stack);
   }
 
   final appLinks = AppLinks();
   appLinks.uriLinkStream.listen((uri) {
     if (uri.scheme == 'rizz' && uri.host == 'profile') {
-      // обработка профиля
+      // TODO: открыть профиль
     }
   });
 
@@ -92,25 +123,12 @@ void main() async {
     return true;
   };
 
-  runApp(const RizzApp()); // без runZonedGuarded
+  runApp(const RizzApp());
 
+  // После запуска – инициализируем уведомления и слушатель сообщений
   final notificationService = GetIt.I<NotificationService>();
   await notificationService.initialize();
-
+  
   final messageListener = GetIt.I<MessageListenerService>();
   messageListener.startListening();
-
-  @pragma('vm:entry-point')
-  Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    await setupServiceLocator();
-    final ns = GetIt.I<NotificationService>();
-    final title = message.notification?.title ?? 'Новое сообщение';
-    final body = message.notification?.body ?? '';
-    await ns.showLocalNotification(title: title, body: body, payload: jsonEncode(message.data));
-  }
-
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 }

@@ -14,6 +14,7 @@ import '../../../core/logger/app_logger.dart';
 import '../../../core/settings/settings_provider.dart';
 import '../../../shared/services/firestore_service.dart';
 import '../../../shared/services/voice_service.dart';
+import '../../../shared/services/presence_service.dart';
 import '../../profile/presentation/user_profile_screen.dart';
 import '../../../shared/services/media_api_service.dart';
 import '../data/chat_repository.dart';
@@ -55,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   DateTime? _lastSeen;
   bool _isTyping = false;
   StreamSubscription? _chatStatusSubscription;
+  StreamSubscription<DocumentSnapshot>? _userStatusSubscription;
 
   String? _replyingToId;
   String? _replyingToText;
@@ -70,6 +72,22 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
   bool _isPlaying = false;
   Duration _currentPosition = Duration.zero;
   Duration _totalDuration = Duration.zero;
+
+  void _subscribeToUserStatus() {
+    if (widget.otherUserId == _currentUser.uid) return;
+    _userStatusSubscription = GetIt.I<PresenceService>()
+        .getUserStatus(widget.otherUserId)
+        .listen((snapshot) {
+      if (!mounted || !snapshot.exists) return;
+      final data = snapshot.data() as Map<String, dynamic>;
+      final isOnline = data['isOnline'] as bool? ?? false;
+      final lastSeen = (data['lastSeen'] as Timestamp?)?.toDate();
+      setState(() {
+        _isOnlineInChat = isOnline;
+        _lastSeen = lastSeen;
+      });
+    });
+  }
 
   @override
   void initState() {
@@ -103,6 +121,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
         setState(() => _showScrollToBottom = false);
       }
     });
+    _subscribeToUserStatus();
   }
 
   Future<void> _loadOtherUserInfo() async {
@@ -485,6 +504,7 @@ class _ChatScreenState extends State<ChatScreen> with SingleTickerProviderStateM
 
   @override
   void dispose() {
+    _userStatusSubscription?.cancel();
     _leaveChat();
     _chatStatusSubscription?.cancel();
     _scrollController.dispose();

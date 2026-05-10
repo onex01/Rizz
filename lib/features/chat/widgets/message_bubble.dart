@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
 import 'message_content/uploading_message_builder.dart';
 import 'message_content/text_message_builder.dart';
 import 'message_content/image_message_builder.dart';
@@ -49,11 +48,79 @@ class MessageBubble extends StatelessWidget {
     required this.messageId,
   });
 
+  void _showMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply),
+              title: const Text('Ответить'),
+              onTap: () {
+                Navigator.pop(ctx);
+                onReply();
+              },
+            ),
+            if (messageType == 'text') ...[
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text('Копировать'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onCopy();
+                },
+              ),
+              if (isMe)
+                ListTile(
+                  leading: const Icon(Icons.edit),
+                  title: const Text('Изменить'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    onEdit();
+                  },
+                ),
+            ],
+            ListTile(
+              leading: const Icon(Icons.forward),
+              title: const Text('Переслать'),
+              onTap: () {
+                Navigator.pop(ctx);
+                onForward();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Удалить для себя'),
+              onTap: () {
+                Navigator.pop(ctx);
+                onDeleteMe();
+              },
+            ),
+            if (isMe)
+              ListTile(
+                leading: const Icon(Icons.delete_forever),
+                title: const Text('Удалить для всех'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onDeleteAll();
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final child = _buildContent(context);
-    return CupertinoContextMenu(
-      actions: _buildActions(),
+    return GestureDetector(
+      onLongPress: () => _showMenu(context),
       child: child,
     );
   }
@@ -131,45 +198,5 @@ class MessageBubble extends StatelessWidget {
       default:
         return const SizedBox.shrink();
     }
-  }
-
-  List<Widget> _buildActions() {
-    return [
-      CupertinoContextMenuAction(
-        trailingIcon: Icons.reply,
-        onPressed: onReply,
-        child: const Text('Ответить'),
-      ),
-      if (messageType == 'text') ...[
-        CupertinoContextMenuAction(
-          trailingIcon: Icons.copy,
-          onPressed: onCopy,
-          child: const Text('Копировать'),
-        ),
-        if (isMe)
-          CupertinoContextMenuAction(
-            trailingIcon: Icons.edit,
-            onPressed: onEdit,
-            child: const Text('Изменить'),
-          ),
-      ],
-      CupertinoContextMenuAction(
-        trailingIcon: Icons.forward,
-        onPressed: onForward,
-        child: const Text('Переслать'),
-      ),
-      CupertinoContextMenuAction(
-        trailingIcon: Icons.delete_outline,
-        onPressed: onDeleteMe,
-        child: const Text('Удалить у меня'),
-      ),
-      if (isMe)
-        CupertinoContextMenuAction(
-          isDestructiveAction: true,
-          trailingIcon: Icons.delete_forever,
-          onPressed: onDeleteAll,
-          child: const Text('Удалить у всех'),
-        ),
-    ];
   }
 }
