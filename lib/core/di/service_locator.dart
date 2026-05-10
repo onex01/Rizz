@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';                                    // <-- добавлено
+import 'package:uuid/uuid.dart';
 
 import '../logger/app_logger.dart';
 import '../logger/remote_logger.dart';
@@ -28,7 +28,6 @@ import '../../shared/services/media_api_service.dart';
 
 final sl = GetIt.instance;
 
-/// Генерирует или получает сохранённый уникальный идентификатор установки
 Future<String> _getOrCreateDeviceId() async {
   final prefs = sl<SharedPreferences>();
   String? id = prefs.getString('device_id');
@@ -40,7 +39,6 @@ Future<String> _getOrCreateDeviceId() async {
 }
 
 Future<void> setupServiceLocator() async {
-  // Внешние зависимости
   final prefs = await SharedPreferences.getInstance();
   sl.registerSingleton<SharedPreferences>(prefs);
   sl.registerSingleton<FirebaseAuth>(FirebaseAuth.instance);
@@ -49,18 +47,14 @@ Future<void> setupServiceLocator() async {
   sl.registerSingleton<FirebaseStorage>(FirebaseStorage.instance);
   sl.registerLazySingleton<MediaApiService>(() => MediaApiService());
 
-  // Платформа
   sl.registerSingleton<PlatformInfo>(getPlatformInfo());
 
-  // Логгер
   sl.registerSingleton<RemoteLogger>(RemoteLogger());
   final deviceId = await _getOrCreateDeviceId();
   sl.registerSingleton<AppLogger>(AppLogger(sl<RemoteLogger>(), deviceId: deviceId));
 
-  // Уведомления
   sl.registerSingleton<NotificationService>(await createNotificationService());
 
-  // Общие сервисы
   sl.registerLazySingleton<AuthService>(() => AuthServiceImpl(
         sl<FirebaseAuth>(),
         sl<FirebaseFirestore>(),
@@ -81,17 +75,14 @@ Future<void> setupServiceLocator() async {
   sl.registerLazySingleton<UserCacheService>(() => UserCacheService());
   sl.registerLazySingleton<ChangelogService>(() => ChangelogService());
 
-  // Репозитории фич
   sl.registerLazySingleton<ChatRepository>(() => ChatRepositoryImpl(
         sl<FirebaseFirestore>(),
         sl<AppLogger>(),
       ));
 
-  // Use Cases
   sl.registerLazySingleton<SendMessageUseCase>(() => SendMessageUseCase(sl<ChatRepository>()));
   sl.registerLazySingleton<GetChatsUseCase>(() => GetChatsUseCase(sl<ChatRepository>()));
 
-  // Слушатель сообщений
   sl.registerLazySingleton<MessageListenerService>(() => MessageListenerService(
       sl<FirebaseFirestore>(),
       sl<FirebaseAuth>(),

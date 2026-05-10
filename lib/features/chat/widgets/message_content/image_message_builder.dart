@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../light_widgets/lightweight_image.dart';
 import '../chat_common_widgets.dart';
@@ -19,8 +20,8 @@ class ImageMessageBuilder {
     final caption = msgData['text'] as String? ?? '';
     final isRead = msgData['isRead'] == true;
 
-    // Локальный файл для своих сообщений
-    if (isMe && localPath != null && File(localPath).existsSync()) {
+    // Для своих сообщений с локальным файлом (только не Web)
+    if (!kIsWeb && isMe && localPath != null && File(localPath).existsSync()) {
       return MediaWithCaption(
         isMe: isMe,
         caption: caption,
@@ -73,7 +74,7 @@ class ImageMessageBuilder {
       );
     }
 
-    // Новый URL
+    // Обычный URL
     if (mediaUrl != null) {
       return MediaWithCaption(
         isMe: isMe,
@@ -84,12 +85,12 @@ class ImageMessageBuilder {
           time: time,
           fontSize: fontSize,
           isRead: isRead,
-          onTap: (ctx, file) => onShowFullScreenImage(ctx, file),
+          onTap: (ctx, url) {
+            onShowFullScreenImage(ctx, File(''), url: url);
+          },
         ),
       );
     }
-
-    // Старый HEX
 
     return const SizedBox.shrink();
   }

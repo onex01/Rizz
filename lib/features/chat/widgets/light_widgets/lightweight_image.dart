@@ -1,8 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:get_it/get_it.dart';
-import '../../../../shared/services/cache_service.dart';
-import '../../../../shared/services/media_api_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class LightweightImageWidget extends StatefulWidget {
   final String url;
@@ -10,7 +7,7 @@ class LightweightImageWidget extends StatefulWidget {
   final String time;
   final double fontSize;
   final bool isRead;
-  final Function(BuildContext, File) onTap;
+  final Function(BuildContext, String) onTap;
 
   const LightweightImageWidget({
     super.key,
@@ -27,66 +24,36 @@ class LightweightImageWidget extends StatefulWidget {
 }
 
 class _LightweightImageWidgetState extends State<LightweightImageWidget> {
-  File? _file;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final cache = GetIt.I<MessageFileCache>();
-    File? file = await cache.getCachedFile(widget.url);
-    if (file == null) {
-      try {
-        final downloaded = await GetIt.I<MediaApiService>().downloadFile(widget.url);
-        if (downloaded != null) {
-          await cache.cacheFile(widget.url, downloaded);
-          file = downloaded;
-        }
-      } catch (_) {}
-    }
-    if (mounted) {
-      setState(() {
-        _file = file;
-        _loading = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const SizedBox(
-        width: 200,
-        height: 200,
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      );
-    }
-
-    if (_file == null) {
-      return const SizedBox(width: 200, height: 200, child: Center(child: Icon(Icons.broken_image)));
-    }
-
     return Align(
       alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onTap: () => widget.onTap(context, _file!),
+        onTap: () => widget.onTap(context, widget.url),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4),
           width: 200,
           height: 200,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            image: DecorationImage(
-              image: ResizeImage(FileImage(_file!), width: 200),
-              fit: BoxFit.cover,
-            ),
           ),
           child: Stack(
             children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: widget.url,
+                  width: 200,
+                  height: 200,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  errorWidget: (context, url, error) => const Center(
+                    child: Icon(Icons.broken_image, size: 40),
+                  ),
+                ),
+              ),
               Positioned(
                 bottom: 4,
                 right: 4,

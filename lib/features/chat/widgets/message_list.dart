@@ -157,9 +157,13 @@ class _MessageListState extends State<MessageList> with AutomaticKeepAliveClient
       backgroundColor: Colors.black,
       body: GestureDetector(
         onTap: () => Navigator.pop(context),
-        child: url != null
-            ? Center(child: InteractiveViewer(child: CachedNetworkImage(imageUrl: url)))
-            : Center(child: InteractiveViewer(child: Image.file(file))),
+        child: Center(
+          child: url != null
+              ? InteractiveViewer(child: CachedNetworkImage(imageUrl: url))
+              : file.existsSync()
+                  ? InteractiveViewer(child: Image.file(file))
+                  : const Text('Ошибка загрузки', style: TextStyle(color: Colors.white)),
+        ),
       ),
     )));
   }

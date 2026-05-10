@@ -17,6 +17,7 @@ import 'core/logger/app_logger.dart';
 import 'core/notification/notification_service.dart';
 import 'shared/services/message_listener_service.dart';
 import 'shared/services/firestore_service.dart';
+import 'shared/services/cache_service.dart';
 import 'firebase_options.dart';
 
 // ======================================================
@@ -38,6 +39,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   final title = message.notification?.title ?? 'Новое сообщение';
   final body = message.notification?.body ?? '';
   final payload = jsonEncode(message.data);
+  final cache = GetIt.I<MessageFileCache>();
+  await cache.init();
   
   await notificationService.showLocalNotification(
     title: title,

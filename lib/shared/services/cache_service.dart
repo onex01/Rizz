@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 
 class MessageFileCache {
   static final MessageFileCache _instance = MessageFileCache._internal();
@@ -6,90 +9,106 @@ class MessageFileCache {
   MessageFileCache._internal();
 
   final Map<String, File> _urlMemoryCache = {};
+  late final CacheManager _cacheManager;
 
-  /// Получить файл из кэша по URL
+  Future<void> init() async {
+    if (kIsWeb) {
+      _cacheManager = CacheManager(
+        Config(
+          'rizz_web_cache',
+          stalePeriod: const Duration(days: 7),
+          maxNrOfCacheObjects: 100,
+        ),
+      );
+    } else {
+      final tempDir = await getTemporaryDirectory();
+      final cacheDir = Directory('${tempDir.path}/media_cache');
+      if (!await cacheDir.exists()) {
+        await cacheDir.create(recursive: true);
+      }
+      _cacheManager = CacheManager(
+        Config(
+          'rizz_media_cache',
+          stalePeriod: const Duration(days: 7),
+          maxNrOfCacheObjects: 100,
+        ),
+      );
+    }
+  }
+
   Future<File?> getCachedFile(String url) async {
     if (_urlMemoryCache.containsKey(url)) return _urlMemoryCache[url];
-    final hash = _hash(url);
-    final file = File('${Directory.systemTemp.path}/media_cache/$hash');
-    if (await file.exists()) {
-      _urlMemoryCache[url] = file;
-      return file;
-    }
+    try {
+      final cacheEntry = await _cacheManager.getFileFromCache(url);
+      if (cacheEntry != null) {
+        _urlMemoryCache[url] = cacheEntry.file;
+        return cacheEntry.file;
+      }
+    } catch (e) {}
     return null;
   }
 
-  /// Сохранить файл в кэш
+  // ИСПРАВЛЕННЫЙ МЕТОД cacheFile
   Future<void> cacheFile(String url, File source) async {
-    final hash = _hash(url);
-    final dir = Directory('${Directory.systemTemp.path}/media_cache');
-    if (!await dir.exists()) await dir.create(recursive: true);
-    final target = File('${dir.path}/$hash');
-    await source.copy(target.path);
-    _urlMemoryCache[url] = target;
-  }
-
-  String _hash(String input) {
-    return input.hashCode.toRadixString(16);
-  }
-
-  /// Полная очистка кэша
-  Future<void> clearCache() async {
-    final tempDir = Directory.systemTemp;
     try {
-      for (var entity in tempDir.listSync(recursive: false)) {
-        if (entity is File) {
-          final name = entity.path.split('/').last;
-          if (name.startsWith('msg_') || name.startsWith('avatar_') || name.startsWith('url_')) {
-            await entity.delete();
-          }
+      final cachedFile = await _cacheManager.putFile(url, await source.readAsBytes());
+      // putFile возвращает File, а не объект с полем file
+      _urlMemoryCache[url] = cachedFile;
+    } catch (e) {}
+  }
+
+  Future<void> clearCache() async {
+    await _cacheManager.emptyCache();
+    _urlMemoryCache.clear();
+    if (!kIsWeb) {
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final mediaCacheDir = Directory('${tempDir.path}/media_cache');
+        if (await mediaCacheDir.exists()) {
+          await mediaCacheDir.delete(recursive: true);
         }
-      }
-      final mediaCacheDir = Directory('${tempDir.path}/media_cache');
-      if (await mediaCacheDir.exists()) {
-        await mediaCacheDir.delete(recursive: true);
-      }
-      _urlMemoryCache.clear();
-    } catch (e) {
-      print('MessageFileCache.clearCache error: $e');
+      } catch (_) {}
     }
   }
 
-  /// Информация о кэше для настроек
   Future<Map<String, dynamic>> getCacheInfo() async {
-    final tempDir = Directory.systemTemp;
-    final List<String> files = [];
-    int totalSizeBytes = 0;
-
+    if (kIsWeb) {
+      return {
+        'fileCount': 0,
+        'totalSizeBytes': 0,
+        'totalSizeFormatted': '0 B',
+        'files': [],
+      };
+    }
     try {
-      for (var entity in tempDir.listSync(recursive: false)) {
-        if (entity is File) {
-          final name = entity.path.split('/').last;
-          if (name.startsWith('msg_') || name.startsWith('avatar_') || name.startsWith('url_')) {
-            files.add(name);
-            totalSizeBytes += await entity.length();
-          }
-        }
-      }
+      final tempDir = await getTemporaryDirectory();
+      final List<String> files = [];
+      int totalSizeBytes = 0;
+
       final mediaCacheDir = Directory('${tempDir.path}/media_cache');
       if (await mediaCacheDir.exists()) {
         await for (var entity in mediaCacheDir.list()) {
           if (entity is File) {
-            files.add('media_cache/${entity.path.split('/').last}');
+            files.add(entity.path.split('/').last);
             totalSizeBytes += await entity.length();
           }
         }
       }
-    } catch (e) {
-      print('MessageFileCache.getCacheInfo error: $e');
-    }
 
-    return {
-      'fileCount': files.length,
-      'totalSizeBytes': totalSizeBytes,
-      'totalSizeFormatted': _formatBytes(totalSizeBytes),
-      'files': files,
-    };
+      return {
+        'fileCount': files.length,
+        'totalSizeBytes': totalSizeBytes,
+        'totalSizeFormatted': _formatBytes(totalSizeBytes),
+        'files': files,
+      };
+    } catch (e) {
+      return {
+        'fileCount': 0,
+        'totalSizeBytes': 0,
+        'totalSizeFormatted': '0 B',
+        'files': [],
+      };
+    }
   }
 
   String _formatBytes(int bytes) {
